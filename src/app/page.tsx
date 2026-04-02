@@ -260,10 +260,29 @@ export default function Dashboard() {
   const stats = statusData?.stats;
   const logs = statusData?.recentLogs ?? [];
 
-  // Sorted models
-  const availableModels = models.filter((m) => m.health.status === "available");
-  const cooldownModels = models.filter((m) => m.health.status === "cooldown");
-  const unknownModels = models.filter((m) => m.health.status === "unknown");
+  // Deduplicate models by name — keep the best one (available > cooldown > unknown, highest score)
+  const deduped = (() => {
+    const byName = new Map<string, ModelData>();
+    for (const m of models) {
+      const key = m.name;
+      const existing = byName.get(key);
+      if (!existing) { byName.set(key, m); continue; }
+      // prefer available > cooldown > unknown
+      const statusOrder = { available: 0, cooldown: 1, unknown: 2 } as Record<string, number>;
+      const existScore = existing.benchmark?.avgScore ?? -1;
+      const newScore = m.benchmark?.avgScore ?? -1;
+      const existStatus = statusOrder[existing.health.status] ?? 2;
+      const newStatus = statusOrder[m.health.status] ?? 2;
+      if (newStatus < existStatus || (newStatus === existStatus && newScore > existScore)) {
+        byName.set(key, m);
+      }
+    }
+    return Array.from(byName.values());
+  })();
+
+  const availableModels = deduped.filter((m) => m.health.status === "available");
+  const cooldownModels = deduped.filter((m) => m.health.status === "cooldown");
+  const unknownModels = deduped.filter((m) => m.health.status === "unknown");
   const sortedModels = [...availableModels, ...cooldownModels, ...unknownModels];
 
   const logLevelStyle: Record<string, string> = {

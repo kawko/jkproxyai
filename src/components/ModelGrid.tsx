@@ -12,6 +12,48 @@ import {
 } from "./shared";
 import type { ModelData } from "./shared";
 
+// ─── Fun Grade System ─────────────────────────────────────────────────────────
+
+function getGrade(pct: number): { grade: string; label: string; color: string; emoji: string } {
+  if (pct >= 90) return { grade: "A+", label: "นักเรียนดีเด่น", color: "text-yellow-300", emoji: "🏆" };
+  if (pct >= 80) return { grade: "A", label: "เก่งมาก", color: "text-emerald-300", emoji: "⭐" };
+  if (pct >= 70) return { grade: "B+", label: "ดี", color: "text-cyan-300", emoji: "👍" };
+  if (pct >= 60) return { grade: "B", label: "พอใช้", color: "text-blue-300", emoji: "📘" };
+  if (pct >= 50) return { grade: "C+", label: "ผ่านหวุดหวิด", color: "text-amber-300", emoji: "😅" };
+  if (pct >= 40) return { grade: "C", label: "ต้องปรับปรุง", color: "text-orange-300", emoji: "📝" };
+  if (pct >= 30) return { grade: "D", label: "สอบตก", color: "text-red-300", emoji: "😢" };
+  return { grade: "F", label: "ไม่ผ่าน", color: "text-red-400", emoji: "💀" };
+}
+
+function getFunStatus(model: ModelData): { text: string; emoji: string } {
+  if (model.health.status === "cooldown") {
+    return { text: "ไปพักผ่อนก่อน", emoji: "😴" };
+  }
+  if (model.health.status === "unknown") {
+    return { text: "ยังไม่มาเรียน", emoji: "🤷" };
+  }
+  if (!model.benchmark) {
+    return { text: "รอเข้าห้องสอบ", emoji: "✏️" };
+  }
+  const pct = (model.benchmark.avgScore / model.benchmark.maxScore) * 100;
+  if (pct >= 90) return { text: "หัวหน้าห้อง!", emoji: "👑" };
+  if (pct >= 70) return { text: "ขยันดีมาก", emoji: "💪" };
+  if (pct >= 50) return { text: "พอถูไถได้", emoji: "🙂" };
+  if (pct >= 30) return { text: "ต้องติวเพิ่ม", emoji: "📚" };
+  return { text: "ซ้ำชั้นเลย", emoji: "🫠" };
+}
+
+function getSpeedLabel(ms: number): { text: string; emoji: string } {
+  if (ms <= 200) return { text: "สายฟ้า", emoji: "⚡" };
+  if (ms <= 500) return { text: "เร็วมาก", emoji: "🚀" };
+  if (ms <= 1000) return { text: "เร็ว", emoji: "🏃" };
+  if (ms <= 3000) return { text: "ปกติ", emoji: "🚶" };
+  if (ms <= 5000) return { text: "ช้าหน่อย", emoji: "🐢" };
+  return { text: "ช้ามาก", emoji: "🦥" };
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 interface ModelGridProps {
   sortedModels: ModelData[];
   availableCount: number;
@@ -30,84 +72,121 @@ export function ModelGrid({ sortedModels, availableCount, cooldownCount, unknown
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
             </svg>
           </span>
-          โมเดลทั้งหมด
+          ห้องเรียน AI
         </h2>
         <div className="flex items-center gap-3 text-xs">
-          <span className="flex items-center gap-1.5 text-emerald-400"><GlowDot status="available" /> พร้อม ({availableCount})</span>
-          <span className="flex items-center gap-1.5 text-amber-400"><GlowDot status="cooldown" /> พัก ({cooldownCount})</span>
-          <span className="flex items-center gap-1.5 text-gray-500"><GlowDot status="unknown" /> ไม่ทราบ ({unknownCount})</span>
+          <span className="flex items-center gap-1.5 text-emerald-400"><GlowDot status="available" /> มาเรียน ({availableCount})</span>
+          <span className="flex items-center gap-1.5 text-amber-400"><GlowDot status="cooldown" /> ลาพัก ({cooldownCount})</span>
+          <span className="flex items-center gap-1.5 text-gray-500"><GlowDot status="unknown" /> ขาดเรียน ({unknownCount})</span>
         </div>
       </div>
 
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-32 rounded-xl" />
+            <Skeleton key={i} className="h-40 rounded-xl" />
           ))}
         </div>
       ) : sortedModels.length === 0 ? (
         <div className="glass rounded-2xl p-12 text-center text-gray-500">
-          <p>ยังไม่มีโมเดล — กด &quot;รันตอนนี้&quot; เพื่อสแกน</p>
+          <div className="text-5xl mb-3">🏫</div>
+          <p>ยังไม่มีนักเรียน — กด &quot;รันตอนนี้&quot; เพื่อเปิดรับสมัคร</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {sortedModels.map((model) => {
             const pc = PROVIDER_COLORS[model.provider] ?? PROVIDER_COLORS.openrouter;
             const cooldownText = fmtCooldown(model.health.cooldownUntil);
+            const funStatus = getFunStatus(model);
+            const hasBenchmark = model.benchmark && model.benchmark.avgScore > 0;
+            const pct = hasBenchmark
+              ? Math.round((model.benchmark!.avgScore / model.benchmark!.maxScore) * 100)
+              : 0;
+            const gradeInfo = hasBenchmark ? getGrade(pct) : null;
+            const speedInfo = model.health.latencyMs > 0 ? getSpeedLabel(model.health.latencyMs) : null;
+
             return (
               <div
                 key={model.id}
-                className={`card-3d glass rounded-xl p-4 cursor-default ${
+                className={`card-3d glass rounded-xl p-4 cursor-default transition-all ${
                   model.health.status === "available" ? "border border-emerald-500/20 hover:border-emerald-400/40" :
-                  model.health.status === "cooldown"  ? "border border-amber-500/20 hover:border-amber-400/40" :
-                  "border border-white/5"
+                  model.health.status === "cooldown"  ? "border border-amber-500/20 hover:border-amber-400/40 opacity-60" :
+                  "border border-white/5 opacity-40"
                 }`}
               >
+                {/* Header: name + grade badge */}
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <GlowDot status={model.health.status} />
                     <span className="font-medium text-sm text-gray-100 truncate leading-tight">{model.name}</span>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
+                    {gradeInfo && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded font-black ${gradeInfo.color} bg-white/5 border border-white/10`}>
+                        {gradeInfo.grade}
+                      </span>
+                    )}
                     <span className={`text-xs px-1.5 py-0.5 rounded font-bold ${TIER_COLORS[model.tier] ?? TIER_COLORS.small}`}>
                       {TIER_LABELS[model.tier] ?? "S"}
                     </span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1.5 mb-3">
+                {/* Provider + context */}
+                <div className="flex items-center gap-1.5 mb-2">
                   <span className={`text-xs px-1.5 py-0.5 rounded font-semibold ${pc.text} ${pc.bg} border ${pc.border}`}>
                     {model.provider}
                   </span>
                   <span className="text-xs text-gray-600">{fmtCtx(model.contextLength)}</span>
+                  {speedInfo && (
+                    <span className="text-xs text-gray-600">{speedInfo.emoji} {fmtMs(model.health.latencyMs)}</span>
+                  )}
                 </div>
 
-                {model.benchmark ? (
-                  <div>
+                {/* Benchmark score + grade */}
+                {hasBenchmark ? (
+                  <div className="mb-2">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-gray-500">{model.benchmark.avgScore.toFixed(1)}/{model.benchmark.maxScore}</span>
-                      <span className="text-xs font-bold text-indigo-300">
-                        {Math.round((model.benchmark.avgScore / model.benchmark.maxScore) * 100)}%
+                      <span className="text-xs text-gray-500">
+                        {model.benchmark!.avgScore.toFixed(1)}/{model.benchmark!.maxScore}
+                      </span>
+                      <span className={`text-xs font-bold ${gradeInfo?.color ?? "text-indigo-300"}`}>
+                        {pct}%
                       </span>
                     </div>
                     <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-gradient-to-r from-indigo-500 to-cyan-500 rounded-full transition-all duration-1000"
-                        style={{ width: `${(model.benchmark.avgScore / model.benchmark.maxScore) * 100}%` }}
+                        className={`h-full rounded-full transition-all duration-1000 ${
+                          pct >= 80 ? "bg-gradient-to-r from-yellow-500 to-amber-400" :
+                          pct >= 60 ? "bg-gradient-to-r from-indigo-500 to-cyan-500" :
+                          pct >= 40 ? "bg-gradient-to-r from-amber-500 to-orange-500" :
+                          "bg-gradient-to-r from-red-500 to-pink-500"
+                        }`}
+                        style={{ width: `${pct}%` }}
                       />
                     </div>
                   </div>
                 ) : (
-                  <div className="text-xs text-gray-700 italic">ยังไม่มีคะแนน</div>
+                  <div className="mb-2" />
                 )}
 
+                {/* Fun status line */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500">
+                    {funStatus.emoji} {funStatus.text}
+                  </span>
+                  {gradeInfo && (
+                    <span className={`text-xs ${gradeInfo.color}`}>
+                      {gradeInfo.emoji} {gradeInfo.label}
+                    </span>
+                  )}
+                </div>
+
+                {/* Cooldown */}
                 {cooldownText && (
                   <div className="mt-2 text-xs text-amber-400 bg-amber-500/10 rounded px-2 py-1">
-                    ⏱ {cooldownText}
+                    😴 {cooldownText}
                   </div>
-                )}
-                {model.health.latencyMs > 0 && (
-                  <div className="mt-1 text-xs text-gray-600">{fmtMs(model.health.latencyMs)}</div>
                 )}
               </div>
             );
