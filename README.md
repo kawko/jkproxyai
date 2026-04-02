@@ -1,7 +1,7 @@
-# BCProxyAI — Smart AI Gateway
+# BCProxyAI -- Smart AI Gateway
 
 ระบบ Gateway อัจฉริยะ สำหรับเลือกโมเดล AI ฟรีที่ดีที่สุดให้อัตโนมัติ  
-ออกแบบมาสำหรับใช้งานร่วมกับ **OpenClaw** และ **HiClaw**
+ออกแบบมาสำหรับใช้งานร่วมกับ **[OpenClaw](https://github.com/openclaw/openclaw)** และ **HiClaw**
 
 ---
 
@@ -10,90 +10,121 @@
 > **ระบบนี้ไม่มีการยืนยันตัวตน (API Key) ในการเรียกใช้ Gateway**  
 > ห้ามเปิดให้เข้าถึงจากภายนอก (Internet) โดยเด็ดขาด  
 >  
-> **แนะนำให้ติดตั้งบน Local หรือ Network ภายในองค์กรเท่านั้น**  
-> หากต้องการเปิดให้ภายนอกใช้งาน ให้นำ Code ไปแก้ไขเพิ่มระบบ Authentication ก่อน
+> **แนะนำให้ติดตั้งบน Local (เครื่องตัวเอง) หรือ Network ภายในองค์กรเท่านั้น**  
+> หากต้องการเปิดให้ภายนอกใช้งาน ให้นำ Code ไปแก้ไขเพิ่มระบบ Authentication ก่อน  
+>  
+> ไม่มี API Key -- ใครก็ตามที่เข้าถึงพอร์ตได้ จะใช้ได้ทันที
 
 ---
 
 ## สารบัญ
 
 - [ภาพรวมระบบ](#ภาพรวมระบบ)
-- [ความสามารถหลัก](#ความสามารถหลัก)
-- [ติดตั้งด้วย Docker (แนะนำ)](#ติดตั้งด้วย-docker-แนะนำ)
-- [ติดตั้งแบบ Manual](#ติดตั้งแบบ-manual)
+- [ติดตั้ง Docker Desktop (สำหรับมือใหม่)](#ติดตั้ง-docker-desktop-สำหรับมือใหม่)
+- [ติดตั้ง BCProxyAI บน Docker](#ติดตั้ง-bcproxyai-บน-docker)
 - [ตั้งค่า API Keys](#ตั้งค่า-api-keys)
-- [เชื่อมต่อกับ OpenClaw / HiClaw](#เชื่อมต่อกับ-openclaw--hiclaw)
+- [เชื่อมต่อกับ OpenClaw (ละเอียดมาก)](#เชื่อมต่อกับ-openclaw-ละเอียดมาก)
 - [Virtual Models (โมเดลพิเศษ)](#virtual-models-โมเดลพิเศษ)
 - [API Endpoints](#api-endpoints)
-- [Dashboard](#dashboard)
+- [ระบบ Benchmark (คุณครูออกข้อสอบ)](#ระบบ-benchmark-คุณครูออกข้อสอบ)
 - [Worker อัตโนมัติ](#worker-อัตโนมัติ)
-- [MCP Server](#mcp-server)
-- [โครงสร้างโปรเจค](#โครงสร้างโปรเจค)
-- [การแก้ไขปัญหา](#การแก้ไขปัญหา)
+- [Dashboard](#dashboard)
+- [การแก้ไขปัญหาทั่วไป](#การแก้ไขปัญหาทั่วไป)
+- [สร้างด้วยอะไร](#สร้างด้วยอะไร)
 
 ---
 
 ## ภาพรวมระบบ
 
+BCProxyAI ทำหน้าที่เป็น "ตัวกลาง" ระหว่าง OpenClaw กับผู้ให้บริการ AI ฟรีหลายเจ้า  
+คิดง่ายๆ ว่า: **OpenClaw ส่งคำถามมา -> BCProxyAI เลือกโมเดล AI ฟรีตัวที่ดีที่สุดให้ -> ส่งคำตอบกลับ**
+
 ```
 OpenClaw / HiClaw
-        │
-        ▼
-┌─────────────────────────────┐
-│     BCProxyAI Gateway       │  ← http://localhost:3333/v1
-│  /v1/chat/completions       │
-│  /v1/models                 │
-│                             │
-│  ┌─────────────────────┐    │
-│  │  Smart Router        │   │  ← เลือก model อัตโนมัติ
-│  │  - Auto-detect tools │   │
-│  │  - Auto-detect vision│   │
-│  │  - Fallback on error │   │
-│  └─────────────────────┘    │
-│                             │
-│  ┌─────────────────────┐    │
-│  │  Background Worker   │   │  ← ทำงานทุก 1 ชม.
-│  │  1. Scan models      │   │
-│  │  2. Health check     │   │
-│  │  3. Benchmark        │   │
-│  └─────────────────────┘    │
-│                             │
-│  SQLite DB + Dashboard      │
-└─────────────────────────────┘
-        │
-        ▼
-┌───────────┬───────────┬───────────┬───────────┐
-│ OpenRouter│  Kilo AI  │  Google   │   Groq    │
-│  (free)   │  (free)   │ AI Studio │  (free)   │
-└───────────┴───────────┴───────────┴───────────┘
+        |
+        v
++-------------------------------+
+|     BCProxyAI Gateway         |  <- http://localhost:3333/v1
+|  (ตัวกลางเลือก AI ให้)        |
+|                               |
+|  Smart Router                 |  <- เลือก model อัตโนมัติ
+|  - ประมาณ token, เลือกโมเดล   |     ที่ context window พอ
+|  - ตรวจจับ tools/vision       |
+|  - Fallback ถ้า error         |
+|  - 413 error: cooldown 15 นาที|
+|                               |
+|  Background Worker            |  <- ทำงานทุก 1 ชม.
+|  1. สแกนหาโมเดลฟรี            |
+|  2. เช็คว่ายังใช้ได้ไหม         |
+|  3. สอบภาษาไทย ให้คะแนน       |
+|                               |
+|  SQLite DB + Dashboard        |
++-------------------------------+
+        |
+        v
++------------+-----------+-----------+-----------+
+| OpenRouter |  Kilo AI  |  Google   |   Groq    |
+|   (ฟรี)    |   (ฟรี)   | AI Studio |   (ฟรี)   |
++------------+-----------+-----------+-----------+
 ```
 
 ---
 
-## ความสามารถหลัก
+## ติดตั้ง Docker Desktop (สำหรับมือใหม่)
 
-| ความสามารถ | รายละเอียด |
-|-----------|-----------|
-| **สแกนอัตโนมัติ** | ค้นหาโมเดล AI ฟรีจาก 4 ผู้ให้บริการ ทุก 1 ชม. |
-| **Health Check** | ตรวจสอบว่าโมเดลไหนยังใช้ได้ พักโมเดลที่ติด rate limit 2 ชม. |
-| **Benchmark ภาษาไทย** | สอบ 3 คำถามภาษาไทย ให้คะแนน 0-10 คัดเฉพาะตัวที่ผ่าน |
-| **Smart Routing** | เลือกโมเดลที่เหมาะกับงาน (tools/vision/thai/fast) |
-| **Auto-Fallback** | ถ้าโมเดลแรก error จะสลับไปตัวอื่นอัตโนมัติ (สูงสุด 3 ครั้ง) |
-| **Tool Detection** | ตรวจจับอัตโนมัติว่าโมเดลไหนรองรับ tool calling |
-| **Vision Detection** | ตรวจจับอัตโนมัติว่าโมเดลไหนรองรับการวิเคราะห์ภาพ |
-| **Log Rotation** | ลบ log เก่าเกิน 30 วัน อัตโนมัติ |
-| **OpenAI Compatible** | ใช้งานเหมือน OpenAI API ทุกประการ |
+> **Docker คืออะไร?** Docker เป็นโปรแกรมที่ช่วยรันแอปพลิเคชันใน "กล่อง" (Container) แยกส่วนจากเครื่องของคุณ คิดง่ายๆ ว่าเป็น "คอมจำลอง" ที่รันโปรแกรมให้เราโดยไม่ต้องติดตั้งอะไรเพิ่มบนเครื่องจริง
+
+### ขั้นตอนที่ 1: ดาวน์โหลด Docker Desktop
+
+1. เปิดเบราว์เซอร์ ไปที่ **https://www.docker.com/products/docker-desktop/**
+2. กดปุ่ม **"Download for Windows"** (หรือ Mac ถ้าใช้ Mac)
+3. รอดาวน์โหลดเสร็จ (ไฟล์ประมาณ 500MB)
+
+### ขั้นตอนที่ 2: ติดตั้ง Docker Desktop
+
+1. **ดับเบิลคลิก**ไฟล์ที่ดาวน์โหลดมา (Docker Desktop Installer.exe)
+2. ถ้าถูกถาม "Use WSL 2 instead of Hyper-V" ให้ **ติ๊กเลือก** (WSL2 เร็วกว่า)
+3. กด **Ok** แล้วรอติดตั้ง (ประมาณ 2-5 นาที)
+4. กด **Close and restart** เพื่อ restart เครื่อง
+
+### ขั้นตอนที่ 3: เปิด Docker Desktop ครั้งแรก
+
+1. หลัง restart กดเปิดโปรแกรม **Docker Desktop** จาก Start Menu
+2. รอจนเห็นข้อความ **"Docker Desktop is running"** ที่มุมล่างซ้าย (ไอคอนวาฬสีเขียว)
+3. ถ้าเจอหน้า "Accept license" ให้กด **Accept**
+4. ถ้าเจอหน้า "Sign in" สามารถกด **Skip** ได้ (ไม่ต้อง sign in)
+
+### รู้จักหน้าตา Docker Desktop
+
+| แท็บ | คืออะไร |
+|------|--------|
+| **Containers** | กล่องที่กำลังรัน (หลังติดตั้ง BCProxyAI จะเห็นที่นี่) |
+| **Images** | ไฟล์ต้นแบบของกล่อง (คิดเหมือน "แม่พิมพ์") |
+| **Volumes** | ที่เก็บข้อมูลของกล่อง (database อยู่ที่นี่) |
+
+> **สำคัญ:** Docker Desktop ต้องเปิดค้างไว้ตลอดเวลาที่จะใช้ BCProxyAI ถ้าปิด Docker = BCProxyAI จะหยุดทำงาน
 
 ---
 
-## ติดตั้งด้วย Docker (แนะนำ)
+## ติดตั้ง BCProxyAI บน Docker
+
+> **Terminal คืออะไร?** หน้าต่างสำหรับพิมพ์คำสั่ง บน Windows เปิดได้โดยกด `Win + R` พิมพ์ `cmd` แล้วกด Enter หรือค้นหา "Terminal" หรือ "PowerShell" จาก Start Menu
 
 ### ขั้นตอนที่ 1: Clone โปรเจค
+
+เปิด Terminal (หน้าต่างพิมพ์คำสั่ง) แล้วพิมพ์:
 
 ```bash
 git clone <repository-url> bcproxyai
 cd bcproxyai
 ```
+
+> **ผลลัพธ์ที่ควรเห็น:**
+> ```
+> Cloning into 'bcproxyai'...
+> remote: Enumerating objects: ...
+> Receiving objects: 100% ...
+> ```
 
 ### ขั้นตอนที่ 2: สร้างไฟล์ .env.local
 
@@ -101,119 +132,340 @@ cd bcproxyai
 cp .env.example .env.local
 ```
 
-แก้ไข `.env.local` ใส่ API Key (ดูหัวข้อ [ตั้งค่า API Keys](#ตั้งค่า-api-keys))
+จากนั้นเปิดไฟล์ `.env.local` ด้วย text editor (เช่น Notepad) แล้วใส่ API Key:
 
-### ขั้นตอนที่ 3: Build และ Start
+```env
+# จำเป็น -- สมัครฟรีที่ https://openrouter.ai/keys
+OPENROUTER_API_KEY=sk-or-v1-xxxx
+
+# จำเป็น -- สมัครฟรีที่ https://console.groq.com/keys
+GROQ_API_KEY=gsk_xxxx
+
+# ไม่บังคับ -- ถ้าไม่ใส่ จะข้ามการสแกน
+KILO_API_KEY=
+GOOGLE_AI_API_KEY=
+```
+
+(ดูวิธีสมัครที่หัวข้อ [ตั้งค่า API Keys](#ตั้งค่า-api-keys))
+
+### ขั้นตอนที่ 3: Build (สร้างกล่อง)
+
+พิมพ์คำสั่งนี้ใน Terminal:
 
 ```bash
 docker compose build
+```
+
+> **รอจนเสร็จ** (ครั้งแรกใช้เวลาประมาณ 3-10 นาที ขึ้นอยู่กับความเร็วเน็ต)  
+> **ผลลัพธ์ที่ควรเห็น:**
+> ```
+> [+] Building ...
+> => [internal] load build definition ...
+> ...
+> => exporting to image
+> ```
+
+> **ถ้าเจอ error:** ตรวจสอบว่า Docker Desktop เปิดอยู่ (ไอคอนวาฬสีเขียว)
+
+### ขั้นตอนที่ 4: Start (เริ่มรัน)
+
+```bash
 docker compose up -d
 ```
 
-### ขั้นตอนที่ 4: เปิด Dashboard
+> `-d` หมายถึง "รันเบื้องหลัง" (detached) -- Terminal จะกลับมาให้พิมพ์คำสั่งอื่นได้  
+> **ผลลัพธ์ที่ควรเห็น:**
+> ```
+> [+] Running 1/1
+>  ✓ Container bcproxyai-bcproxyai-1  Started
+> ```
 
-เปิดเบราว์เซอร์ไปที่ **http://localhost:3333**
+### ขั้นตอนที่ 5: เปิด Dashboard ดู
 
-Worker จะเริ่มสแกนโมเดลอัตโนมัติทันที หรือกดปุ่ม **"รันตอนนี้"** บน Dashboard
+1. เปิดเบราว์เซอร์
+2. พิมพ์ **http://localhost:3333** แล้วกด Enter
+3. จะเห็น Dashboard ของ BCProxyAI
 
----
+> Worker จะเริ่มสแกนโมเดลอัตโนมัติทันที รอสักครู่จะเห็นโมเดลเริ่มปรากฏ  
+> หรือกดปุ่ม **"รันตอนนี้"** บน Dashboard เพื่อเร่ง
 
-## ติดตั้งแบบ Manual
+### ติดตั้งแบบ Manual (ไม่ใช้ Docker)
 
-ต้องการ **Node.js 20+**
+ถ้าไม่อยากใช้ Docker ต้องมี **Node.js 20+** ติดตั้งบนเครื่อง:
 
 ```bash
-# ติดตั้ง dependencies
-npm ci
-
-# สร้างไฟล์ .env.local (ดูหัวข้อตั้งค่า API Keys)
-
-# Build
-npm run build
-
-# Start
-npm start
+npm ci              # ติดตั้ง dependencies
+npm run build       # Build โปรเจค
+npm start           # เริ่มรัน
 ```
 
-เข้าใช้งานที่ **http://localhost:3000**
+เข้าใช้งานที่ **http://localhost:3000** (พอร์ต 3000 ไม่ใช่ 3333)
 
 ---
 
 ## ตั้งค่า API Keys
 
-สร้างไฟล์ `.env.local` ที่ root ของโปรเจค:
-
-```env
-# จำเป็น — ใช้สแกนและ proxy โมเดลฟรี
-OPENROUTER_API_KEY=sk-or-v1-xxxx
-
-# จำเป็น — ใช้สแกนและ proxy โมเดลฟรี
-GROQ_API_KEY=gsk_xxxx
-
-# ไม่บังคับ — ถ้าไม่ใส่ จะข้ามการสแกน Kilo
-KILO_API_KEY=
-
-# ไม่บังคับ — ถ้าไม่ใส่ จะข้ามการสแกน Google AI Studio
-GOOGLE_AI_API_KEY=
-```
-
-### วิธีสมัคร API Key (ฟรี)
+API Key คือ "กุญแจ" สำหรับเข้าถึงบริการ AI ของแต่ละเจ้า สมัครฟรีทั้งหมด:
 
 | ผู้ให้บริการ | ลิงก์สมัคร | หมายเหตุ |
 |-------------|-----------|----------|
-| **OpenRouter** | https://openrouter.ai/keys | สมัครฟรี มีโมเดลฟรีมากที่สุด |
-| **Groq** | https://console.groq.com/keys | สมัครฟรี เร็วมาก |
-| **Kilo AI** | https://kilo.ai | ไม่ต้องใช้ key ก็สแกนได้ |
-| **Google AI Studio** | https://aistudio.google.com/apikey | สมัครฟรี |
+| **OpenRouter** | https://openrouter.ai/keys | **จำเป็น** -- สมัครฟรี มีโมเดลฟรีมากที่สุด |
+| **Groq** | https://console.groq.com/keys | **จำเป็น** -- สมัครฟรี เร็วมาก |
+| **Kilo AI** | https://kilo.ai | ไม่บังคับ -- ไม่ต้องใช้ key ก็สแกนได้ |
+| **Google AI Studio** | https://aistudio.google.com/apikey | ไม่บังคับ -- สมัครฟรี |
+
+### วิธีสมัคร (ตัวอย่าง OpenRouter)
+
+1. เปิด https://openrouter.ai/keys
+2. กด "Create Account" หรือ Sign in ด้วย Google
+3. กด "Create Key"
+4. **Copy key** (ขึ้นต้นด้วย `sk-or-v1-`)
+5. วางใน `.env.local` ที่บรรทัด `OPENROUTER_API_KEY=`
 
 ---
 
-## เชื่อมต่อกับ OpenClaw / HiClaw
+## เชื่อมต่อกับ OpenClaw (ละเอียดมาก)
 
-### OpenClaw
+> **OpenClaw คืออะไร?** OpenClaw เป็น AI coding assistant ที่ทำงานใน Terminal ช่วยเขียนโค้ดให้ BCProxyAI ทำให้ OpenClaw ใช้โมเดล AI ฟรีได้โดยไม่ต้องจ่ายเงิน
 
-เปิด Settings ของ OpenClaw แล้วตั้งค่า:
+### วิธีที่ 1: OpenClaw บน Docker (BCProxyAI รันบน Docker ด้วย)
+
+> **ทำไมต้อง host.docker.internal?**  
+> เมื่อ OpenClaw กับ BCProxyAI รันบน Docker คนละ Container จะเรียก `localhost` หากันไม่ได้ ต้องใช้ `host.docker.internal` เพื่อให้ Container เข้าถึง host machine (เครื่องจริงของคุณ)
+
+#### ขั้นตอนที่ 1: onboard OpenClaw ให้ชี้มา BCProxyAI
+
+เปิด Terminal (หน้าต่างพิมพ์คำสั่ง) แล้วพิมพ์คำสั่งนี้ทั้งหมด (copy ทั้งบล็อก):
+
+```bash
+openclaw onboard \
+  --non-interactive \
+  --accept-risk \
+  --auth-choice custom-api-key \
+  --custom-base-url http://host.docker.internal:3333/v1 \
+  --custom-model-id auto \
+  --custom-api-key dummy \
+  --custom-compatibility openai \
+  --skip-channels \
+  --skip-daemon \
+  --skip-health \
+  --skip-search \
+  --skip-skills \
+  --skip-ui
+```
+
+> **ผลลัพธ์ที่ควรเห็น:**
+> ```
+> Onboarding complete!
+> Provider: custom-host-docker-internal-3333/auto
+> ```
+
+> **อธิบายคำสั่ง:**
+> - `--custom-base-url` = บอกว่า BCProxyAI อยู่ที่ไหน
+> - `--custom-api-key dummy` = ใส่อะไรก็ได้ เพราะ BCProxyAI ไม่มี authentication
+> - `--custom-model-id auto` = ให้ BCProxyAI เลือกโมเดลให้อัตโนมัติ
+> - `--skip-*` = ข้ามขั้นตอนที่ไม่จำเป็นตอน onboard
+
+#### ขั้นตอนที่ 2: แก้ไข openclaw.json
+
+หลัง onboard เสร็จ ต้องแก้ไขไฟล์ config ของ OpenClaw:
+
+1. หาไฟล์ `openclaw.json` (ปกติอยู่ใน home directory ของ OpenClaw)
+2. เปิดด้วย text editor
+3. แก้ไขให้เป็นแบบนี้:
 
 ```json
 {
-  "apiProvider": "openai-compatible",
-  "openAiBaseUrl": "http://localhost:3333/v1",
-  "openAiModelId": "auto"
+  "apiProvider": "openai-completions",
+  "openAiBaseUrl": "http://host.docker.internal:3333/v1",
+  "openAiModelId": "auto",
+  "openAiApiKey": "dummy",
+  "contextWindow": 131072
 }
 ```
 
-- `auto` = ให้ BCProxyAI เลือกโมเดลที่ดีที่สุดให้
-- สามารถเปลี่ยนเป็น `bcproxy/fast`, `bcproxy/tools`, `bcproxy/thai` ได้
-- หรือระบุชื่อโมเดลตรงๆ เช่น `groq/qwen/qwen3-32b`
+> **สำคัญมาก:**
+> - `apiProvider` ต้องเป็น `"openai-completions"` (ไม่ใช่ `"openai-compatible"` -- ผิดนะ!)
+> - `contextWindow` ต้องเป็น `131072` (128K) -- ถ้าไม่ตั้ง OpenClaw จะส่ง context น้อยเกินไป
+> - BCProxyAI จะเลือกโมเดลที่มี context window พอกับ request ให้อัตโนมัติ
 
-### HiClaw
+#### ขั้นตอนที่ 3: แก้ปัญหา "pairing required"
 
-ตั้งค่าแบบเดียวกัน — ชี้ Base URL ไปที่ `http://localhost:3333/v1`
+> **ปัญหานี้เกิดเมื่อไหร่?** เมื่อ OpenClaw รันใน Docker แล้วพยายามเชื่อมต่อกับ Gateway อาจเจอ error "pairing required" -- หมายถึง Device ยังไม่ได้รับอนุญาต
+
+วิธีแก้ -- พิมพ์ทีละบรรทัด:
+
+```bash
+# ขั้นที่ 1: ดูรายการ devices ที่รอ approve
+openclaw devices list
+```
+
+> **ผลลัพธ์ที่ควรเห็น:**
+> ```
+> Pending devices:
+>   requestId: abc123-def456-...
+>   name: docker-container-xxx
+> ```
+
+```bash
+# ขั้นที่ 2: approve device (เอา requestId จากข้างบนมาใส่)
+openclaw devices approve abc123-def456-...
+```
+
+> **ผลลัพธ์ที่ควรเห็น:**
+> ```
+> Device approved successfully
+> ```
+
+#### ขั้นตอนที่ 4: แก้ปัญหา "origin not allowed"
+
+> **ปัญหานี้เกิดเมื่อไหร่?** เมื่อ Gateway ถูก bind แบบ "loopback" (รับเฉพาะ 127.0.0.1) แต่ Docker Container เรียกมาจาก IP อื่น
+
+วิธีแก้ -- เพิ่มใน openclaw.json:
+
+```json
+{
+  "apiProvider": "openai-completions",
+  "openAiBaseUrl": "http://host.docker.internal:3333/v1",
+  "openAiModelId": "auto",
+  "openAiApiKey": "dummy",
+  "contextWindow": 131072,
+  "gateway": {
+    "bind": "lan",
+    "allowedOrigins": [
+      "http://host.docker.internal:3333",
+      "http://localhost:3333"
+    ]
+  }
+}
+```
+
+> **อธิบาย:**
+> - `"bind": "lan"` = เปิดให้เครื่องอื่นใน network เข้าถึงได้ (ไม่ใช่แค่ตัวเอง)
+> - `allowedOrigins` = รายชื่อ URL ที่อนุญาตให้เชื่อมต่อ
+
+### วิธีที่ 2: OpenClaw แบบ CLI Native (ไม่ใช้ Docker)
+
+> ถ้า OpenClaw รันบนเครื่องโดยตรง (ไม่ใช่ Docker) ง่ายกว่ามาก -- ใช้ `localhost` ได้เลย
+
+#### ขั้นตอนที่ 1: onboard
+
+```bash
+openclaw onboard \
+  --non-interactive \
+  --accept-risk \
+  --auth-choice custom-api-key \
+  --custom-base-url http://localhost:3333/v1 \
+  --custom-model-id auto \
+  --custom-api-key dummy \
+  --custom-compatibility openai \
+  --skip-channels \
+  --skip-daemon \
+  --skip-health \
+  --skip-search \
+  --skip-skills \
+  --skip-ui
+```
+
+#### ขั้นตอนที่ 2: แก้ไข openclaw.json
+
+```json
+{
+  "apiProvider": "openai-completions",
+  "openAiBaseUrl": "http://localhost:3333/v1",
+  "openAiModelId": "auto",
+  "openAiApiKey": "dummy",
+  "contextWindow": 131072
+}
+```
+
+> เท่านี้เลย! ไม่ต้องตั้ง gateway หรือ approve device
+
+### ตัวอย่าง openclaw.json เต็มๆ (Docker -- ใช้ได้จริง)
+
+```json
+{
+  "apiProvider": "openai-completions",
+  "openAiBaseUrl": "http://host.docker.internal:3333/v1",
+  "openAiModelId": "auto",
+  "openAiApiKey": "dummy",
+  "contextWindow": 131072,
+  "gateway": {
+    "bind": "lan",
+    "allowedOrigins": [
+      "http://host.docker.internal:3333",
+      "http://localhost:3333"
+    ]
+  }
+}
+```
+
+### ตัวอย่าง openclaw.json เต็มๆ (CLI Native -- ใช้ได้จริง)
+
+```json
+{
+  "apiProvider": "openai-completions",
+  "openAiBaseUrl": "http://localhost:3333/v1",
+  "openAiModelId": "auto",
+  "openAiApiKey": "dummy",
+  "contextWindow": 131072
+}
+```
+
+### การแก้ปัญหา Token Mismatch
+
+> **ปัญหานี้เกิดเมื่อไหร่?** เมื่อ OpenClaw ส่ง context ที่ใหญ่เกินกว่าโมเดลจะรับได้
+
+1. ตรวจสอบว่า `contextWindow` ใน openclaw.json ตั้งเป็น `131072`
+2. BCProxyAI มีระบบ **smart context-aware selection** -- ประมาณจำนวน token ของ request แล้วเลือกเฉพาะโมเดลที่มี context window พอ
+3. ถ้าเจอ error 413 (payload too large) -- BCProxyAI จะ cooldown โมเดลนั้น 15 นาที แล้ว fallback ไปโมเดลอื่นอัตโนมัติ
+
+### Checklist เชื่อมต่อ OpenClaw (เช็คทีละข้อ)
+
+- [ ] Docker Desktop เปิดอยู่ (ไอคอนวาฬสีเขียว)
+- [ ] BCProxyAI Docker รันอยู่ (`docker compose up -d`)
+- [ ] เปิด http://localhost:3333 ได้ (เห็น Dashboard)
+- [ ] Worker สแกนเสร็จ มีโมเดลพร้อมใช้ (ดูจาก Dashboard)
+- [ ] `openclaw onboard` เสร็จเรียบร้อย
+- [ ] แก้ `openclaw.json` -- `apiProvider` เป็น `"openai-completions"`
+- [ ] แก้ `openclaw.json` -- `contextWindow` เป็น `131072`
+- [ ] ถ้าใช้ Docker: base URL เป็น `host.docker.internal:3333`
+- [ ] ถ้าใช้ Docker: approve pairing แล้ว (`openclaw devices approve`)
+- [ ] ถ้าใช้ Docker: gateway bind เป็น `"lan"` + allowedOrigins ถูกต้อง
+- [ ] ทดสอบ: `curl http://localhost:3333/v1/models` ตอบรายชื่อโมเดลกลับมา
 
 ---
 
 ## Virtual Models (โมเดลพิเศษ)
 
-BCProxyAI มีโมเดลพิเศษ 4 ตัวที่เลือกให้อัตโนมัติ:
+BCProxyAI มีโมเดลพิเศษ 4 ตัว -- ไม่ใช่โมเดลจริง แต่เป็น "ชื่อลัด" ที่ BCProxyAI จะเลือกโมเดลจริงให้:
 
 | Model ID | พฤติกรรม |
 |----------|---------|
 | `auto` หรือ `bcproxy/auto` | เลือกโมเดลที่คะแนน benchmark สูงสุด |
 | `bcproxy/fast` | เลือกโมเดลที่ตอบเร็วที่สุด (latency ต่ำสุด) |
-| `bcproxy/tools` | เลือกโมเดลที่รองรับ tool calling |
+| `bcproxy/tools` | เลือกโมเดลที่รองรับ tool calling (เช่น เรียกฟังก์ชัน) |
 | `bcproxy/thai` | เลือกโมเดลที่เก่งภาษาไทย (คะแนน benchmark สูงสุด) |
 
 ### การตรวจจับอัตโนมัติ
 
 แม้จะใช้ `auto` แต่ถ้า request มีลักษณะพิเศษ ระบบจะตรวจจับและเลือกให้เหมาะ:
 
-- มี `tools` ใน request → เลือกเฉพาะโมเดลที่รองรับ tool calling
-- มี `image_url` ใน messages → เลือกเฉพาะโมเดลที่รองรับ vision
-- มี `response_format: json_schema` → เลือกโมเดลขนาดใหญ่ที่จัดการ JSON ได้ดี
+- มี `tools` ใน request -> เลือกเฉพาะโมเดลที่รองรับ tool calling
+- มี `image_url` ใน messages -> เลือกเฉพาะโมเดลที่รองรับ vision (ดูรูป)
+- มี `response_format: json_schema` -> เลือกโมเดลขนาดใหญ่ที่จัดการ JSON ได้ดี
+
+### Smart Context-Aware Selection
+
+ระบบจะประมาณจำนวน token ของ request แล้วเลือกเฉพาะโมเดลที่มี context window เพียงพอ
+
+ถ้าเกิด error 413 (payload too large):
+- โมเดลนั้นจะถูก cooldown 15 นาที
+- ระบบ fallback ไปโมเดลอื่นทันที (สูงสุด 3 ครั้ง)
 
 ### การใช้โมเดลตรง
 
-ระบุ provider + model ID ตรงๆ ได้เลย:
+ถ้าอยากเจาะจงโมเดล ระบุ provider + model ID ตรงๆ ได้:
 
 ```
 groq/llama-3.3-70b-versatile
@@ -232,7 +484,7 @@ kilo/nvidia/nemotron-3-super-120b-a12b:free
 | POST | `/v1/chat/completions` | ส่งข้อความแชท (รองรับ stream) |
 | GET | `/v1/models` | รายชื่อโมเดลทั้งหมด + สถานะ |
 
-**ตัวอย่างการเรียกใช้:**
+**ตัวอย่าง: ส่งข้อความ**
 
 ```bash
 curl -X POST http://localhost:3333/v1/chat/completions \
@@ -244,7 +496,7 @@ curl -X POST http://localhost:3333/v1/chat/completions \
   }'
 ```
 
-**ตัวอย่าง Stream:**
+**ตัวอย่าง: Stream (ตอบทีละคำ)**
 
 ```bash
 curl -X POST http://localhost:3333/v1/chat/completions \
@@ -276,201 +528,11 @@ curl -X POST http://localhost:3333/v1/chat/completions \
 
 ---
 
-## Dashboard
-
-เปิด **http://localhost:3333** เพื่อดู Dashboard
-
-### หน้าจอหลัก
-
-| ส่วน | คำอธิบาย |
-|------|---------|
-| **Worker Status** | สถานะ worker + นับถอยหลังครั้งถัดไป |
-| **Gateway Config** | Config สำหรับ copy ไปใช้กับ OpenClaw |
-| **สถิติ** | จำนวนโมเดลทั้งหมด / พร้อมใช้ / พักผ่อน / มีคะแนน |
-| **การเปลี่ยนแปลง** | โมเดลใหม่ (24 ชม.) / หายชั่วคราว / หายถาวร |
-| **อันดับโมเดล** | ตาราง ranking ตามคะแนน benchmark |
-| **โมเดลทั้งหมด** | Grid แสดงทุกโมเดล + สถานะ + cooldown |
-| **ทดลองแชท** | ทดสอบแชทกับโมเดลที่เลือกได้ |
-| **บันทึกการทำงาน** | Log การทำงานของ worker |
-
-Dashboard รีเฟรชอัตโนมัติทุก 15 วินาที
-
----
-
-## Worker อัตโนมัติ
-
-Worker ทำงาน 3 ขั้นตอน ทุก 1 ชั่วโมง:
-
-### ขั้นตอนที่ 1: สแกนโมเดล (Scan)
-
-- ดึงรายชื่อโมเดลฟรีจาก 4 ผู้ให้บริการพร้อมกัน
-- บันทึกโมเดลใหม่ อัพเดตโมเดลเดิม
-- ตรวจจับโมเดลที่หายไป (หายชั่วคราว 2-48 ชม. / หายถาวร > 48 ชม.)
-
-### ขั้นตอนที่ 2: Health Check
-
-- ส่ง ping ไปทดสอบโมเดลที่ context >= 32K (ข้ามโมเดลเล็ก/ไม่ใช่ chat)
-- โมเดลที่ติด rate limit หรือ error → พัก cooldown 2 ชม.
-- ทดสอบ tool calling support (สูงสุด 3 ตัว/รอบ)
-- ทดสอบ vision support (สูงสุด 3 ตัว/รอบ)
-
-### ขั้นตอนที่ 3: Benchmark
-
-- สอบ 3 คำถามภาษาไทย:
-  1. "สวัสดีครับ วันนี้อากาศเป็นยังไงบ้าง?"
-  2. "แนะนำอาหารไทยมา 3 เมนู"
-  3. "กรุงเทพมหานครอยู่ประเทศอะไร?"
-- ให้คะแนน 0-10 โดยโมเดล AI อีกตัว (judge)
-- สอบผ่าน = คะแนนเฉลี่ย >= 5/10
-- สอบตก (< 3/10) จะไม่สอบซ้ำภายใน 7 วัน
-- สอบแล้วครบ 3 ข้อ จะไม่สอบซ้ำอีก
-
-### Log Rotation
-
-- ลบ log เก่าเกิน 30 วัน อัตโนมัติทุกรอบ (worker_logs + health_logs)
-
----
-
-## MCP Server
-
-BCProxyAI มี MCP Server ให้ OpenClaw/HiClaw เรียกใช้ได้โดยตรง
-
-### ตั้งค่าใน OpenClaw
-
-คัดลอกไฟล์ `mcp-config.openclaw.json` ไปใช้:
-
-```json
-{
-  "mcpServers": {
-    "bcproxyai": {
-      "command": "node",
-      "args": ["dist/mcp/server.js"],
-      "cwd": "<path-to-bcproxyai>",
-      "env": {
-        "OPENROUTER_API_KEY": "sk-or-v1-xxxx",
-        "BCPROXYAI_API_URL": "http://localhost:3333"
-      }
-    }
-  }
-}
-```
-
-### MCP Tools
-
-| Tool | คำอธิบาย |
-|------|---------|
-| `find_available_models` | หาโมเดลฟรีที่ยังใช้ได้ (ไม่ติด rate limit) |
-| `get_best_model` | แนะนำโมเดลที่ดีที่สุดตาม task (coding/thai/fast/reasoning) |
-| `get_model_config` | ได้ config สำหรับ OpenClaw/HiClaw ทันที |
-| `scan_free_models` | สแกนหาโมเดลฟรีใหม่ |
-| `check_model_health` | เช็คโมเดลเฉพาะตัว |
-
----
-
-## โครงสร้างโปรเจค
-
-```
-bcproxyai/
-├── src/
-│   ├── app/
-│   │   ├── page.tsx                       # Dashboard หน้าหลัก
-│   │   ├── layout.tsx                     # Layout + metadata
-│   │   ├── globals.css                    # CSS animations + glassmorphism
-│   │   ├── api/
-│   │   │   ├── chat/route.ts              # Chat API (Dashboard ใช้)
-│   │   │   ├── models/route.ts            # รายชื่อโมเดล + health + benchmark
-│   │   │   ├── status/route.ts            # สถานะ worker + สถิติ
-│   │   │   ├── leaderboard/route.ts       # อันดับโมเดล
-│   │   │   └── worker/route.ts            # สั่ง worker / ดูสถานะ
-│   │   └── v1/
-│   │       ├── chat/completions/route.ts  # Gateway (OpenAI compatible)
-│   │       └── models/route.ts            # /v1/models
-│   ├── components/
-│   │   ├── shared.tsx                     # Types, constants, helpers
-│   │   ├── StatsCards.tsx                 # การ์ดสถิติ
-│   │   ├── ModelGrid.tsx                  # Grid โมเดลทั้งหมด
-│   │   └── ChatPanel.tsx                  # หน้าแชท
-│   └── lib/
-│       ├── db/schema.ts                   # SQLite schema + connection
-│       └── worker/
-│           ├── index.ts                   # Worker orchestrator + log rotation
-│           ├── scanner.ts                 # สแกน 4 providers
-│           ├── health.ts                  # Health check + tool/vision detection
-│           ├── benchmark.ts               # Benchmark ภาษาไทย
-│           └── startup.ts                 # Auto-start worker
-├── dist/mcp/                              # MCP Server (compiled)
-├── docker-compose.yml
-├── Dockerfile                             # Multi-stage build (289MB)
-├── .env.local                             # API Keys (ไม่ commit)
-└── data/bcproxyai.db                      # SQLite database
-```
-
----
-
-## การแก้ไขปัญหา
-
-### Worker ไม่ทำงาน
-
-```bash
-# ดู log ของ container
-docker logs bcproxyai-bcproxyai-1
-
-# สั่ง worker รันทันที
-curl -X POST http://localhost:3333/api/worker
-```
-
-### ไม่มีโมเดลพร้อมใช้
-
-- ตรวจสอบว่าใส่ API Key ใน `.env.local` แล้ว
-- รอ worker ทำ health check เสร็จ (ดูจาก Dashboard)
-- โมเดลที่ติด rate limit จะพักอัตโนมัติ 2 ชม.
-
-### Gateway ตอบ error
-
-```bash
-# ทดสอบ gateway
-curl -X POST http://localhost:3333/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"auto","messages":[{"role":"user","content":"test"}]}'
-```
-
-- ตรวจสอบ `X-BCProxy-Model` header เพื่อดูว่าเลือกโมเดลอะไร
-- ถ้าไม่มีโมเดลพร้อมใช้ จะตอบ 503
-
-### ต้องการ reset ข้อมูล
-
-```bash
-# ลบ database แล้ว restart
-docker compose down
-docker volume rm bcproxyai_bcproxyai-data
-docker compose up -d
-```
-
----
-
-## การพัฒนาต่อ
-
-หากต้องการนำ Code ไปแก้ไขเพิ่มเติม สิ่งที่แนะนำ:
-
-1. **เพิ่ม API Key Authentication** — เพิ่ม middleware ตรวจ Bearer token ที่ `/v1/*` routes
-2. **เพิ่ม Provider ใหม่** — เพิ่มฟังก์ชัน `fetchXxxModels()` ใน `scanner.ts` + URL ใน `health.ts`
-3. **ปรับคำถาม Benchmark** — แก้ไขตัวแปร `QUESTIONS` ใน `benchmark.ts`
-4. **เปลี่ยนเวลา Worker** — แก้ `setInterval` ใน `index.ts` (ปัจจุบัน 1 ชม.)
-
-### รัน Tests
-
-```bash
-npm test            # รัน unit tests (67 tests)
-npm run test:watch  # รัน tests แบบ watch mode
-```
-
----
-
 ## ระบบ Benchmark (คุณครูออกข้อสอบ)
 
-BCProxyAI ใช้ระบบ **"ให้ AI ตรวจข้อสอบ AI"** — โมเดลหนึ่งตอบคำถาม อีกโมเดลหนึ่งเป็นคุณครูตรวจให้คะแนน
+BCProxyAI ใช้ระบบ **"ให้ AI ตรวจข้อสอบ AI"** -- โมเดลหนึ่งตอบคำถาม อีกโมเดลหนึ่งเป็นคุณครูตรวจให้คะแนน
 
-### ข้อสอบ (3 ข้อ)
+### ข้อสอบ (3 ข้อ ภาษาไทย)
 
 | ข้อ | คำถาม | ทดสอบอะไร |
 |-----|-------|----------|
@@ -501,35 +563,145 @@ BCProxyAI ใช้ระบบ **"ให้ AI ตรวจข้อสอบ A
 
 ### กฎการสอบ
 
-- **สอบผ่าน** = คะแนนเฉลี่ย >= 5/10 — โมเดลพร้อมใช้งาน
-- **สอบตก** = คะแนนเฉลี่ย < 3/10 — ไม่สอบซ้ำภายใน 7 วัน (ประหยัด token)
+- **สอบผ่าน** = คะแนนเฉลี่ย >= 5/10 -- โมเดลพร้อมใช้งาน
+- **สอบตก** = คะแนนเฉลี่ย < 3/10 -- ไม่สอบซ้ำภายใน 7 วัน (ประหยัด token)
 - สอบครบ 3 ข้อแล้ว จะไม่สอบซ้ำอีก
 - สอบสูงสุด 3 โมเดลต่อรอบ (ทุก 1 ชม.)
 - เฉพาะโมเดลที่ผ่าน Health Check แล้วเท่านั้นจึงจะถูกสอบ
 
 ---
 
+## Worker อัตโนมัติ
+
+Worker (โปรแกรมทำงานเบื้องหลัง) ทำงาน 3 ขั้นตอน ทุก 1 ชั่วโมง:
+
+### ขั้นตอนที่ 1: สแกนโมเดล (Scan)
+
+- ดึงรายชื่อโมเดลฟรีจาก 4 ผู้ให้บริการพร้อมกัน
+- บันทึกโมเดลใหม่ อัพเดตโมเดลเดิม
+- ตรวจจับโมเดลที่หายไป (หายชั่วคราว 2-48 ชม. / หายถาวร > 48 ชม.)
+
+### ขั้นตอนที่ 2: Health Check (ตรวจสุขภาพ)
+
+- ส่ง ping ไปทดสอบโมเดลที่ context >= 32K
+- โมเดลที่ติด rate limit หรือ error -> พัก cooldown 2 ชม.
+- ทดสอบ tool calling support (สูงสุด 3 ตัว/รอบ)
+- ทดสอบ vision support (สูงสุด 3 ตัว/รอบ)
+
+### ขั้นตอนที่ 3: Benchmark (สอบ)
+
+- สอบ 3 คำถามภาษาไทย ให้คะแนน 0-10
+- สอบผ่าน = คะแนนเฉลี่ย >= 5/10
+- สอบตก (< 3/10) จะไม่สอบซ้ำภายใน 7 วัน
+- สอบสูงสุด 3 โมเดลต่อรอบ
+
+### Log Rotation (ลบ log เก่า)
+
+- ลบ log เก่าเกิน 30 วัน อัตโนมัติทุกรอบ
+
+---
+
+## Dashboard
+
+เปิด **http://localhost:3333** เพื่อดู Dashboard
+
+| ส่วน | คำอธิบาย |
+|------|---------|
+| **Worker Status** | สถานะ worker + นับถอยหลังครั้งถัดไป |
+| **Gateway Config** | Config สำหรับ copy ไปใช้กับ OpenClaw |
+| **สถิติ** | จำนวนโมเดลทั้งหมด / พร้อมใช้ / พักผ่อน / มีคะแนน |
+| **การเปลี่ยนแปลง** | โมเดลใหม่ (24 ชม.) / หายชั่วคราว / หายถาวร |
+| **อันดับโมเดล** | ตาราง ranking ตามคะแนน benchmark |
+| **โมเดลทั้งหมด** | Grid แสดงทุกโมเดล + สถานะ + cooldown |
+| **ทดลองแชท** | ทดสอบแชทกับโมเดลที่เลือกได้ |
+| **บันทึกการทำงาน** | Log การทำงานของ worker |
+
+Dashboard รีเฟรชอัตโนมัติทุก 15 วินาที
+
+---
+
+## การแก้ไขปัญหาทั่วไป
+
+### Docker Desktop ไม่ยอมเริ่ม
+
+- ตรวจสอบว่า Virtualization เปิดอยู่ใน BIOS
+- ลอง restart เครื่อง
+- ตรวจสอบว่า Windows Update ล่าสุดแล้ว
+- ลอง Uninstall แล้ว Install ใหม่
+
+### Worker ไม่ทำงาน
+
+```bash
+# ดู log ของ container (ดูว่ามี error อะไร)
+docker logs bcproxyai-bcproxyai-1
+
+# สั่ง worker รันทันที
+curl -X POST http://localhost:3333/api/worker
+```
+
+### ไม่มีโมเดลพร้อมใช้
+
+- ตรวจสอบว่าใส่ API Key ใน `.env.local` แล้ว
+- รอ worker ทำ health check เสร็จ (ดูจาก Dashboard)
+- โมเดลที่ติด rate limit จะพักอัตโนมัติ 2 ชม.
+
+### Gateway ตอบ error
+
+```bash
+# ทดสอบ gateway (ถ้าตอบกลับมา = ทำงานปกติ)
+curl -X POST http://localhost:3333/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"auto","messages":[{"role":"user","content":"test"}]}'
+```
+
+- ตรวจสอบ `X-BCProxy-Model` header เพื่อดูว่าเลือกโมเดลอะไร
+- ถ้าไม่มีโมเดลพร้อมใช้ จะตอบ 503
+
+### OpenClaw เชื่อมต่อไม่ได้
+
+- ดูหัวข้อ [เชื่อมต่อกับ OpenClaw](#เชื่อมต่อกับ-openclaw-ละเอียดมาก) ด้านบน
+- ตรวจสอบ `apiProvider` ต้องเป็น `"openai-completions"` (ไม่ใช่ `"openai-compatible"`)
+- ตรวจสอบ `contextWindow` ต้องเป็น `131072`
+- ถ้า Docker: ตรวจ pairing (`openclaw devices list` แล้ว `approve`)
+- ถ้า Docker: ตรวจ gateway bind เป็น `"lan"` + allowedOrigins
+- ทดสอบ: `curl http://localhost:3333/v1/models` ต้องตอบรายชื่อโมเดลกลับมา
+
+### Error 413 (Payload Too Large)
+
+- BCProxyAI จัดการอัตโนมัติ: cooldown โมเดลนั้น 15 นาที แล้ว fallback ไปตัวอื่น
+- ตรวจสอบว่า `contextWindow` ใน openclaw.json = `131072`
+
+### ต้องการ reset ข้อมูลทั้งหมด (เริ่มใหม่)
+
+```bash
+docker compose down                              # หยุด container
+docker volume rm bcproxyai_bcproxyai-data         # ลบ database
+docker compose up -d                              # เริ่มใหม่
+```
+
+---
+
 ## สร้างด้วยอะไร?
 
-โปรเจคนี้สร้างด้วย **Claude Code (Claude CLI)** — AI Coding Assistant จาก Anthropic  
+โปรเจคนี้สร้างด้วย **Claude Code (Claude CLI)** -- AI Coding Assistant จาก Anthropic  
 สั่งงานเป็นภาษาไทย สร้างเสร็จภายในวันเดียว ตั้งแต่ออกแบบจนถึง deploy
 
 | เครื่องมือ | ทำหน้าที่ |
 |-----------|----------|
 | **Claude Code (Opus 4.6)** | เขียนโค้ดทั้งหมด ออกแบบระบบ เขียน tests |
 | **Next.js 16 + TypeScript** | Web framework + ภาษาหลัก |
-| **SQLite (better-sqlite3)** | ฐานข้อมูลแบบ embedded |
-| **Tailwind CSS** | Glassmorphism + animations |
+| **SQLite (better-sqlite3)** | ฐานข้อมูลแบบ embedded (ฝังในตัว) |
+| **Tailwind CSS** | CSS framework สำหรับ UI สวยๆ |
 | **Docker** | Multi-stage build (289MB) |
 | **Vitest** | Unit testing (67 tests) |
 
 ### ต้นทุน
 
-- **ค่า Claude Code** — Claude Pro/Max subscription
-- **ค่า AI Model** — ฟรี! ใช้เฉพาะโมเดลฟรี
-- **ค่า Server** — ฟรี! รันบน Docker Desktop บนเครื่องตัวเอง
+- **ค่า Claude Code** -- Claude Pro/Max subscription
+- **ค่า AI Model** -- ฟรี! ใช้เฉพาะโมเดลฟรี
+- **ค่า Server** -- ฟรี! รันบน Docker Desktop บนเครื่องตัวเอง
 
 ---
 
-**BCProxyAI** — Smart AI Gateway สำหรับ OpenClaw และ HiClaw  
+**BCProxyAI** -- Smart AI Gateway สำหรับ OpenClaw และ HiClaw  
 สร้างด้วย Claude Code (Opus 4.6) + Next.js 16 + TypeScript + SQLite + Tailwind CSS

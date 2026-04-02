@@ -25,17 +25,29 @@ import { GuideModal } from "../components/GuideModal";
 
 // ─── Gateway Config Card ───────────────────────────────────────────────────────
 
-const GATEWAY_CONFIG = `{
-  "apiProvider": "openai-compatible",
+const GATEWAY_CONFIG_DOCKER = `{
+  "apiProvider": "openai-completions",
+  "openAiBaseUrl": "http://host.docker.internal:3333/v1",
+  "openAiModelId": "auto",
+  "openAiApiKey": "dummy",
+  "contextWindow": 131072
+}`;
+
+const GATEWAY_CONFIG_LOCAL = `{
+  "apiProvider": "openai-completions",
   "openAiBaseUrl": "http://localhost:3333/v1",
-  "openAiModelId": "auto"
+  "openAiModelId": "auto",
+  "openAiApiKey": "dummy",
+  "contextWindow": 131072
 }`;
 
 function GatewayConfigCard() {
   const [copied, setCopied] = useState(false);
+  const [configMode, setConfigMode] = useState<"docker" | "local">("docker");
+  const currentConfig = configMode === "docker" ? GATEWAY_CONFIG_DOCKER : GATEWAY_CONFIG_LOCAL;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(GATEWAY_CONFIG).then(() => {
+    navigator.clipboard.writeText(currentConfig).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
@@ -60,8 +72,30 @@ function GatewayConfigCard() {
           Gateway Config
         </span>
         <p style={{ fontSize: "0.875rem", color: "rgb(156,163,175)", marginTop: "0.25rem" }}>
-          วิธีเชื่อมต่อ BCProxyAI กับ OpenClaw:
+          วิธีเชื่อมต่อ BCProxyAI กับ OpenClaw — ใส่ใน openclaw.json:
         </p>
+      </div>
+
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
+        {([["docker", "OpenClaw บน Docker"], ["local", "OpenClaw บนเครื่อง"]] as const).map(([mode, label]) => (
+          <button
+            key={mode}
+            onClick={() => { setConfigMode(mode); setCopied(false); }}
+            style={{
+              padding: "0.375rem 0.75rem",
+              borderRadius: "0.5rem",
+              fontSize: "0.75rem",
+              fontWeight: 600,
+              cursor: "pointer",
+              border: `1px solid ${configMode === mode ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.1)"}`,
+              background: configMode === mode ? "rgba(99,102,241,0.2)" : "transparent",
+              color: configMode === mode ? "rgb(165,180,252)" : "rgb(107,114,128)",
+              transition: "all 0.2s",
+            }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       <div style={{ position: "relative" }}>
@@ -78,7 +112,7 @@ function GatewayConfigCard() {
             margin: 0,
           }}
         >
-          {GATEWAY_CONFIG}
+          {currentConfig}
         </pre>
         <button
           onClick={handleCopy}
@@ -100,6 +134,12 @@ function GatewayConfigCard() {
           {copied ? "คัดลอกแล้ว ✓" : "คัดลอก"}
         </button>
       </div>
+
+      {configMode === "docker" && (
+        <p style={{ fontSize: "0.7rem", color: "rgb(251,191,36)", marginTop: "0.5rem" }}>
+          * ใช้ <code style={{ fontFamily: "monospace" }}>host.docker.internal</code> แทน localhost เพราะ OpenClaw อยู่คนละ container
+        </p>
+      )}
 
       <div style={{ marginTop: "1rem" }}>
         <p style={{ fontSize: "0.75rem", color: "rgb(107,114,128)", marginBottom: "0.5rem", fontWeight: 600 }}>
