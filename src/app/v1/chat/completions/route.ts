@@ -399,40 +399,60 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const MAX_RETRIES = 3;
+    const MAX_RETRIES = 7; // try up to 7 models across different providers
     let lastError = "";
     const startTime = Date.now();
     const userMsg = extractUserMessage(body);
+    const triedProviders = new Set<string>();
 
-    for (let i = 0; i < Math.min(MAX_RETRIES, candidates.length); i++) {
-      const candidate = candidates[i];
+    // Spread candidates across providers: pick 1 from each provider first, then fill
+    const spreadCandidates: typeof candidates = [];
+    const byProvider: Record<string, typeof candidates> = {};
+    for (const c of candidates) {
+      (byProvider[c.provider] ??= []).push(c);
+    }
+    // Round-robin: take 1 from each provider in rotation
+    let hasMore = true;
+    let round = 0;
+    while (hasMore && spreadCandidates.length < candidates.length) {
+      hasMore = false;
+      for (const provModels of Object.values(byProvider)) {
+        if (round < provModels.length) {
+          spreadCandidates.push(provModels[round]);
+          hasMore = true;
+        }
+      }
+      round++;
+    }
+
+    for (let i = 0; i < Math.min(MAX_RETRIES, spreadCandidates.length); i++) {
+      const candidate = spreadCandidates[i];
       const { provider, model_id: actualModelId, id: dbModelId } = candidate;
+      triedProviders.add(provider);
 
       try {
         const response = await forwardToProvider(provider, actualModelId, body, isStream);
 
         if (response.ok) {
           const latency = Date.now() - startTime;
-          // Log success (tokens extracted from non-stream response later, use 0 for stream)
           logGateway(modelField, actualModelId, provider, 200, latency, 0, 0, null, userMsg, null);
           return buildProxiedResponse(response, provider, actualModelId, isStream);
         }
 
-        // Retryable error
-        if (isRetryableStatus(response.status)) {
+        // Retryable error (429, 413, 5xx, and 400 which some providers use for rate limit)
+        if (isRetryableStatus(response.status) || response.status === 400) {
           const errText = await response.text();
-          lastError = `${provider}/${actualModelId}: HTTP ${response.status} ${errText}`;
+          lastError = `${provider}/${actualModelId}: HTTP ${response.status}`;
 
-          // Log cooldown: 413 = short (15 min), 429 = long (2 hours)
           if (response.status === 413) {
             logCooldown(dbModelId, `HTTP 413: ${errText}`, true);
-          } else if (response.status === 429) {
-            logCooldown(dbModelId, `HTTP 429: ${errText}`);
+          } else if (response.status === 429 || response.status === 400) {
+            logCooldown(dbModelId, `HTTP ${response.status}: ${errText}`);
           }
           continue;
         }
 
-        // Non-retryable error (4xx except 429/413)
+        // Non-retryable error
         const errBody = await response.text();
         const latency = Date.now() - startTime;
         logGateway(modelField, actualModelId, provider, response.status, latency, 0, 0, errBody.slice(0, 300), userMsg, null);
@@ -453,7 +473,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error: {
-          message: `ลองแล้ว ${Math.min(MAX_RETRIES, candidates.length)} โมเดล ไม่สำเร็จ: ${lastError}`,
+          message: `ลองแล้ว ${Math.min(MAX_RETRIES, spreadCandidates.length)} โมเดล (${triedProviders.size} providers) ไม่สำเร็จ: ${lastError}`,
           type: "server_error",
           code: 503,
         },
