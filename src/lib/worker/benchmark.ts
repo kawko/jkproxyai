@@ -21,7 +21,13 @@ const PROVIDER_URLS: Record<string, string> = {
   mistral: "https://api.mistral.ai/v1/chat/completions",
 };
 
-const JUDGE_MODELS = [
+// DeepSeek as judge (cheap + reliable)
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY ?? "";
+const DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions";
+const DEEPSEEK_MODEL = "deepseek-chat";
+
+// Fallback judges if DeepSeek unavailable
+const FALLBACK_JUDGE_MODELS = [
   "qwen/qwen3-235b-a22b:free",
   "meta-llama/llama-4-scout:free",
   "google/gemma-3-27b-it:free",
@@ -117,9 +123,45 @@ export async function judgeAnswer(
 ): Promise<{ score: number; reasoning: string }> {
   if (!answer) return { score: 0, reasoning: "No answer provided" };
 
-  const prompt = `Score this Thai chatbot answer 0-10.\nQuestion: ${question}\nAnswer: ${answer}\nReturn JSON only: {"score": <number>, "reasoning": "<short explanation>"}`;
+  const prompt = `ให้คะแนน 0-10 คำตอบนี้ตอบภาษาไทยถูกไหม?\nQ: ${question}\nA: ${answer.slice(0, 300)}\nตอบ JSON: {"score":N,"reasoning":"สั้นๆ"}`;
 
-  for (const judgeModel of JUDGE_MODELS) {
+  // Try DeepSeek first (cheap + reliable)
+  if (DEEPSEEK_API_KEY) {
+    try {
+      const res = await fetch(DEEPSEEK_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: DEEPSEEK_MODEL,
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: 200,
+        }),
+        signal: AbortSignal.timeout(20000),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        let content: string =
+          json.choices?.[0]?.message?.content ?? "";
+        content = content.replace(/```json\s*/gi, "").replace(/```\s*/g, "").replace(/<think>[\s\S]*?<\/think>\s*/g, "").trim();
+        const match = content.match(/\{[\s\S]*\}/);
+        if (match) {
+          const parsed = JSON.parse(match[0]);
+          const score = Math.min(10, Math.max(0, Number(parsed.score) || 0));
+          const reasoning = String(parsed.reasoning ?? "").slice(0, 500);
+          return { score, reasoning: `[DeepSeek] ${reasoning}` };
+        }
+      }
+    } catch {
+      // fall through to fallback judges
+    }
+  }
+
+  // Fallback: free models from OpenRouter
+  for (const judgeModel of FALLBACK_JUDGE_MODELS) {
     try {
       const res = await fetch(PROVIDER_URLS.openrouter, {
         method: "POST",
@@ -137,11 +179,7 @@ export async function judgeAnswer(
       const json = await res.json();
       let content: string =
         json.choices?.[0]?.message?.content ?? json.choices?.[0]?.text ?? "";
-
-      // Strip markdown code fences if present
       content = content.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-
-      // Extract JSON from response
       const match = content.match(/\{[\s\S]*\}/);
       if (!match) continue;
 
@@ -154,7 +192,7 @@ export async function judgeAnswer(
     }
   }
 
-  // Fallback: simple heuristic score
+  // Last fallback: heuristic
   const hasContent = answer.trim().length > 10;
   return {
     score: hasContent ? 5 : 0,
