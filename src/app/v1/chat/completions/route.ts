@@ -70,7 +70,14 @@ function detectRequestCapabilities(body: Record<string, unknown>): RequestCapabi
   return { hasTools, hasImages, needsJsonSchema };
 }
 
-function getAvailableModels(caps: RequestCapabilities): ModelRow[] {
+// Rough token estimate: ~4 chars per token for English, ~2 for Thai/CJK
+function estimateTokens(body: Record<string, unknown>): number {
+  const str = JSON.stringify(body.messages ?? []);
+  // Mix of Thai + English → ~3 chars per token average
+  return Math.ceil(str.length / 3);
+}
+
+function getAvailableModels(caps: RequestCapabilities, minContext = 0): ModelRow[] {
   const db = getDb();
   const now = new Date().toISOString();
 
@@ -80,6 +87,8 @@ function getAvailableModels(caps: RequestCapabilities): ModelRow[] {
   ];
   if (caps.hasTools) filters.push("m.supports_tools = 1");
   if (caps.hasImages) filters.push("m.supports_vision = 1");
+  // Filter models with enough context window (with 2x safety margin for response)
+  if (minContext > 0) filters.push(`m.context_length >= ${minContext * 2}`);
 
   const whereClause = filters.join(" AND ");
   // Prioritize: benchmarked models first (score > 0), then by score, then large context, then latency
@@ -206,7 +215,8 @@ function parseModelField(model: string): {
 
 function selectModelsByMode(
   mode: string,
-  caps: RequestCapabilities
+  caps: RequestCapabilities,
+  estimatedTokens = 0
 ): ModelRow[] {
   const db = getDb();
   const now = new Date().toISOString();
@@ -251,12 +261,16 @@ function selectModelsByMode(
   }
 
   if (mode === "tools") {
-    // Force tools filter regardless of request body
-    return getAvailableModels({ ...caps, hasTools: true });
+    return getAvailableModels({ ...caps, hasTools: true }, estimatedTokens);
   }
 
-  // auto / thai → detect from request automatically
-  return getAvailableModels(caps);
+  // auto / thai → detect from request, filter by context size
+  const models = getAvailableModels(caps, estimatedTokens);
+  // Fallback: if no model fits the context requirement, try without filter
+  if (models.length === 0 && estimatedTokens > 0) {
+    return getAvailableModels(caps, 0);
+  }
+  return models;
 }
 
 async function forwardToProvider(
@@ -356,13 +370,18 @@ export async function POST(req: NextRequest) {
     }
 
     // ---- Smart routing: auto / fast / tools / thai ----
-    const candidates = selectModelsByMode(parsed.mode, caps);
+    const tokensEst = estimateTokens(body);
+    const candidates = selectModelsByMode(parsed.mode, caps, tokensEst);
 
     if (candidates.length === 0) {
+      const availCount = selectModelsByMode(parsed.mode, caps, 0).length;
+      const msg = availCount > 0
+        ? `ไม่มีโมเดลที่ context window รองรับ request ขนาด ~${tokensEst} tokens (มีโมเดล ${availCount} ตัว แต่ context เล็กเกินไป)`
+        : "ไม่มีโมเดลพร้อมใช้งาน — ทุกตัวติด cooldown หรือ error ลองอีกครั้งในอีกสักครู่";
       return NextResponse.json(
         {
           error: {
-            message: "No models available",
+            message: msg,
             type: "server_error",
             code: 503,
           },
@@ -425,7 +444,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error: {
-          message: `All models unavailable. Last error: ${lastError}`,
+          message: `ลองแล้ว ${Math.min(MAX_RETRIES, candidates.length)} โมเดล ไม่สำเร็จ: ${lastError}`,
           type: "server_error",
           code: 503,
         },
