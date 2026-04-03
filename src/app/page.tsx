@@ -202,23 +202,24 @@ export default function Dashboard() {
   }
   const [gatewayLogs, setGatewayLogs] = useState<GatewayLog[]>([]);
 
+  interface CostProvider {
+    id: string;
+    label: string;
+    inputPrice: number;
+    outputPrice: number;
+    cost: number;
+    costThb: number;
+  }
   interface CostSavings {
     totalInputTokens: number;
     totalOutputTokens: number;
     totalTokens: number;
     totalRequests: number;
     todayRequests: number;
-    costGpt4o: number;
-    costClaude: number;
-    costQwen: number;
-    costGpt4oThb: number;
-    costClaudeThb: number;
-    costQwenThb: number;
+    providers: CostProvider[];
     actualCost: number;
     totalSaved: number;
     totalSavedThb: number;
-    todaySaved: number;
-    todaySavedThb: number;
   }
   const [costSavings, setCostSavings] = useState<CostSavings | null>(null);
 
@@ -498,49 +499,35 @@ export default function Dashboard() {
                 <span className="text-gray-600">(input {(costSavings.totalInputTokens / 1000).toFixed(0)}K + output {(costSavings.totalOutputTokens / 1000).toFixed(0)}K)</span>
               </div>
 
-              {/* Cost comparison table */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
-                <div className="glass rounded-lg p-3 text-center">
-                  <div className="text-xs text-gray-500 mb-1">GPT-4o</div>
-                  <div className="text-lg font-bold text-red-400">${costSavings.costGpt4o.toFixed(2)}</div>
-                  <div className="text-xs text-red-500/60">฿{costSavings.costGpt4oThb.toFixed(0)}</div>
-                </div>
-                <div className="glass rounded-lg p-3 text-center">
-                  <div className="text-xs text-gray-500 mb-1">Claude Sonnet</div>
-                  <div className="text-lg font-bold text-red-400">${costSavings.costClaude.toFixed(2)}</div>
-                  <div className="text-xs text-red-500/60">฿{costSavings.costClaudeThb.toFixed(0)}</div>
-                </div>
-                <div className="glass rounded-lg p-3 text-center">
-                  <div className="text-xs text-gray-500 mb-1">Qwen Plus</div>
-                  <div className="text-lg font-bold text-amber-400">${costSavings.costQwen.toFixed(2)}</div>
-                  <div className="text-xs text-amber-500/60">฿{costSavings.costQwenThb.toFixed(0)}</div>
-                </div>
+              {/* Cost comparison — dynamic from API */}
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-3">
+                {(costSavings.providers ?? []).map((p) => (
+                  <div key={p.id} className="glass rounded-lg p-3 text-center">
+                    <div className="text-xs text-gray-500 mb-1 truncate">{p.label}</div>
+                    <div className="text-lg font-bold text-red-400">${p.cost.toFixed(2)}</div>
+                    <div className="text-xs text-red-500/60">฿{p.costThb.toFixed(0)}</div>
+                    <div className="text-[10px] text-gray-600 mt-1">${p.inputPrice}/${p.outputPrice} /1M</div>
+                  </div>
+                ))}
                 <div className="glass rounded-lg p-3 text-center border border-emerald-500/30 bg-emerald-500/5">
                   <div className="text-xs text-emerald-400 mb-1">BCProxyAI</div>
                   <div className="text-lg font-bold text-emerald-300">$0.00</div>
                   <div className="text-xs text-emerald-500">ฟรี!</div>
+                  <div className="text-[10px] text-emerald-600 mt-1">$0/$0 /1M</div>
                 </div>
               </div>
 
               {/* Total saved highlight — compare all */}
               <div className="glass rounded-lg p-3 border border-emerald-500/20 bg-emerald-500/5">
                 <div className="text-xs text-emerald-400 mb-2 font-semibold">ยอดสะสมที่ประหยัดได้ (เทียบแต่ละเจ้า):</div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="text-center">
-                    <div className="text-xs text-gray-500">vs GPT-4o</div>
-                    <div className="text-lg font-black text-emerald-300">${costSavings.costGpt4o.toFixed(2)}</div>
-                    <div className="text-xs text-emerald-500">฿{costSavings.costGpt4oThb.toFixed(0)}</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xs text-gray-500">vs Claude</div>
-                    <div className="text-lg font-black text-emerald-300">${costSavings.costClaude.toFixed(2)}</div>
-                    <div className="text-xs text-emerald-500">฿{costSavings.costClaudeThb.toFixed(0)}</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xs text-gray-500">vs Qwen</div>
-                    <div className="text-lg font-black text-emerald-300">${costSavings.costQwen.toFixed(2)}</div>
-                    <div className="text-xs text-emerald-500">฿{costSavings.costQwenThb.toFixed(0)}</div>
-                  </div>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  {(costSavings.providers ?? []).map((p) => (
+                    <div key={p.id} className="text-center">
+                      <div className="text-xs text-gray-500">vs {p.label}</div>
+                      <div className="text-lg font-black text-emerald-300">${p.cost.toFixed(2)}</div>
+                      <div className="text-xs text-emerald-500">฿{p.costThb.toFixed(0)}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
