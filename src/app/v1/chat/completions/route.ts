@@ -94,7 +94,7 @@ function estimateTokens(body: Record<string, unknown>): number {
   return Math.ceil(str.length / 3);
 }
 
-function getAvailableModels(caps: RequestCapabilities, minContext = 0): ModelRow[] {
+function getAvailableModels(caps: RequestCapabilities): ModelRow[] {
   // No cache — SQLite query < 1ms, cache causes Ollama priority issues
 
   const db = getDb();
@@ -106,8 +106,7 @@ function getAvailableModels(caps: RequestCapabilities, minContext = 0): ModelRow
   ];
   if (caps.hasTools) filters.push("m.supports_tools = 1");
   if (caps.hasImages) filters.push("m.supports_vision = 1");
-  // Filter models with enough context window (1.2x margin for response)
-  if (minContext > 0) filters.push(`m.context_length >= ${Math.ceil(minContext * 1.2)}`);
+  // No context filter — let provider return 413 if too large, gateway will fallback
 
   const whereClause = filters.join(" AND ");
   // Prioritize: benchmarked models first (score > 0), then by score, then large context, then latency
@@ -271,8 +270,7 @@ function getAllModelsIncludingCooldown(caps: RequestCapabilities): ModelRow[] {
 
 function selectModelsByMode(
   mode: string,
-  caps: RequestCapabilities,
-  estimatedTokens = 0
+  caps: RequestCapabilities
 ): ModelRow[] {
   const db = getDb();
   const now = new Date().toISOString();
@@ -317,16 +315,11 @@ function selectModelsByMode(
   }
 
   if (mode === "tools") {
-    return getAvailableModels({ ...caps, hasTools: true }, estimatedTokens);
+    return getAvailableModels({ ...caps, hasTools: true });
   }
 
-  // auto / thai → detect from request, filter by context size
-  const models = getAvailableModels(caps, estimatedTokens);
-  // Fallback: if no model fits the context requirement, try without filter
-  if (models.length === 0 && estimatedTokens > 0) {
-    return getAvailableModels(caps, 0);
-  }
-  return models;
+  // auto / thai → no context filter, let provider handle 413
+  return getAvailableModels(caps);
 }
 
 async function forwardToProvider(
@@ -471,13 +464,12 @@ export async function POST(req: NextRequest) {
     }
 
     // ---- Smart routing: auto / fast / tools / thai ----
-    const tokensEst = estInputTokens;
-    const candidates = selectModelsByMode(parsed.mode, caps, tokensEst);
+    const candidates = selectModelsByMode(parsed.mode, caps);
 
     // ถ้าไม่มี candidate → ลองไม่ filter context → ลองรวม cooldown (สุ่มเลือก ดีกว่า 503)
     let finalCandidates = candidates;
     if (finalCandidates.length === 0) {
-      finalCandidates = selectModelsByMode(parsed.mode, caps, 0);
+      finalCandidates = selectModelsByMode(parsed.mode, caps);
     }
     if (finalCandidates.length === 0) {
       // Last resort: สุ่มจาก ALL models (รวม cooldown) — ดีกว่าไม่ตอบ
@@ -502,9 +494,8 @@ export async function POST(req: NextRequest) {
     const userMsg = extractUserMessage(body);
     const triedProviders = new Set<string>();
 
-    // Ollama (local) ALWAYS first — get Ollama separately without context filter
-    const ollamaCandidates = getAllModelsIncludingCooldown({ ...caps, hasTools: false, hasImages: false })
-      .filter(c => c.provider === "ollama");
+    // Ollama (local) ALWAYS first
+    const ollamaCandidates = finalCandidates.filter(c => c.provider === "ollama");
     const cloudCandidates = finalCandidates.filter(c => c.provider !== "ollama");
 
     // Spread cloud candidates across providers by weight
