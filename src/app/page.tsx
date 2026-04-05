@@ -26,6 +26,11 @@ import { SpeedRace } from "../components/SpeedRace";
 import { Analytics } from "../components/Analytics";
 import type { AnalyticsData } from "../components/Analytics";
 import { ComplaintPanel } from "../components/ComplaintPanel";
+import { RoutingLearnPanel } from "../components/RoutingLearnPanel";
+import { TrendPanel } from "../components/TrendPanel";
+import { UptimePanel } from "../components/UptimePanel";
+import { CostOptimizerPanel } from "../components/CostOptimizerPanel";
+import { SchoolBellPanel } from "../components/SchoolBellPanel";
 
 // ─── Gateway Config Card ───────────────────────────────────────────────────────
 
@@ -345,15 +350,20 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-1 text-xs">
             {[
-              { id: "status",     label: "ภาพรวม" },
-              { id: "rankings",   label: "อันดับ" },
-              { id: "speed-race", label: "แข่งความเร็ว" },
-              { id: "analytics",  label: "สถิติ" },
-              { id: "all-models", label: "รายชื่อโมเดล" },
-              { id: "chat",       label: "ทดลองแชท" },
-              { id: "complaints",  label: "ร้องเรียน" },
-              { id: "gateway-logs", label: "Gateway Log" },
-              { id: "logs",       label: "ประวัติระบบ" },
+              { id: "status",       label: "ห้องครูใหญ่" },
+              { id: "rankings",     label: "ผลสอบ" },
+              { id: "speed-race",   label: "วิ่งแข่ง" },
+              { id: "analytics",    label: "สมุดพก" },
+              { id: "all-models",   label: "นักเรียน" },
+              { id: "chat",         label: "สอบปากเปล่า" },
+              { id: "smart-routing", label: "จัดห้อง" },
+              { id: "trend",        label: "พัฒนาการ" },
+              { id: "uptime",       label: "ขาด/ลา" },
+              { id: "cost-opt",     label: "ค่าเทอม" },
+              { id: "school-bell",  label: "ระฆัง" },
+              { id: "complaints",   label: "ใบร้องเรียน" },
+              { id: "gateway-logs", label: "สมุดจดงาน" },
+              { id: "logs",         label: "บันทึกครู" },
             ].map((link) => (
               <a
                 key={link.id}
@@ -399,14 +409,14 @@ export default function Dashboard() {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-indigo-400 opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-indigo-400" />
               </span>
-              Live Dashboard
+              ห้องเรียน AI กำลังเปิดสอน
             </div>
             <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight text-white mb-3">
               <span className="bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400 bg-clip-text text-transparent animate-gradient">
                 BCProxyAI
               </span>
             </h1>
-            <p className="text-gray-400 text-lg">Smart AI Gateway — เลือก model ฟรีที่ดีที่สุดให้อัตโนมัติ</p>
+            <p className="text-gray-400 text-lg">โรงเรียน AI — คัดเด็กเก่งฟรีให้ทำงานแทนคุณ 🏫</p>
           </div>
 
           {/* Worker Status Card */}
@@ -424,21 +434,21 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="font-bold text-white text-lg">Worker</span>
+                    <span className="font-bold text-white text-lg">ครูใหญ่</span>
                     <span className={`text-sm px-2 py-0.5 rounded-full font-medium ${
                       workerStatus === "running" ? "bg-yellow-500/20 text-yellow-300" :
                       workerStatus === "idle"    ? "bg-indigo-500/20 text-indigo-300" :
                                                   "bg-red-500/20 text-red-300"
                     }`}>
-                      {workerStatus === "running" ? "🟡 กำลังทำงาน" :
-                       workerStatus === "idle"    ? "🟢 ทำงานปกติ" :
-                                                   "🔴 หยุด"}
+                      {workerStatus === "running" ? "🟡 กำลังตรวจการบ้าน" :
+                       workerStatus === "idle"    ? "🟢 นั่งเฝ้าห้อง" :
+                                                   "🔴 ไปพักเบรก"}
                     </span>
                   </div>
                   <div className="flex flex-col gap-1 text-xs text-gray-500">
                     <div className="flex gap-4">
-                      <span>ทำงานล่าสุด: <span className="text-gray-300">{fmtTime(statusData?.worker.lastRun ?? null)}</span></span>
-                      <span>ครั้งถัดไป: <span className="text-gray-300">{fmtTime(statusData?.worker.nextRun ?? null)}</span></span>
+                      <span>เช็คชื่อล่าสุด: <span className="text-gray-300">{fmtTime(statusData?.worker.lastRun ?? null)}</span></span>
+                      <span>เช็คชื่อถัดไป: <span className="text-gray-300">{fmtTime(statusData?.worker.nextRun ?? null)}</span></span>
                     </div>
                     <div className="flex items-center gap-3 flex-wrap">
                       {statusData?.worker.nextRun && workerStatus !== "running" && (
@@ -476,7 +486,7 @@ export default function Dashboard() {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728M12 8v4l2 2" />
                     </svg>
                   )}
-                  รันตอนนี้
+                  สั่งเช็คชื่อเลย!
                 </button>
               </div>
             </div>
@@ -491,7 +501,7 @@ export default function Dashboard() {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <span className="text-lg">💰</span>
-                  <span className="font-bold text-white text-lg">เทียบต้นทุน</span>
+                  <span className="font-bold text-white text-lg">ใบเสร็จค่าเทอม</span>
                 </div>
                 <div className="flex items-center gap-3 text-xs text-gray-500">
                   <span>สะสม {costSavings.totalRequests.toLocaleString()} requests</span>
@@ -545,21 +555,21 @@ export default function Dashboard() {
           <StatsCards stats={stats} loading={loading} />
         </section>
 
-        {/* ── Model Changes Alert ─────────────────────────────────────────── */}
+        {/* ── Model Changes Alert — แบบโรงเรียน ────────────────────────── */}
         {statusData?.modelChanges && (
           (statusData.modelChanges.new.length > 0 || statusData.modelChanges.missing.length > 0 || statusData.modelChanges.warning.length > 0) && (
             <section className="animate-fade-in-up space-y-3">
-              {/* โมเดลใหม่ */}
+              {/* นักเรียนใหม่ย้ายมา */}
               {statusData.modelChanges.new.length > 0 && (
                 <div className="glass rounded-2xl p-4 border border-emerald-500/30 bg-emerald-500/5">
                   <div className="flex items-center gap-2 mb-3">
-                    <span className="text-lg">🆕</span>
-                    <span className="font-bold text-emerald-400">โมเดลใหม่ ({statusData.modelChanges.new.length})</span>
-                    <span className="text-xs text-gray-500">ภายใน 24 ชม.</span>
+                    <span className="text-lg">🎒</span>
+                    <span className="font-bold text-emerald-400">นักเรียนใหม่ย้ายมา! ({statusData.modelChanges.new.length})</span>
+                    <span className="text-xs text-gray-500">ภายใน 24 ชม. — ยินดีต้อนรับ!</span>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {statusData.modelChanges.new.map((m) => (
-                      <span key={m.id} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-sm text-emerald-300">
+                      <span key={m.id} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-sm text-emerald-300 hover:scale-105 transition-transform cursor-default">
                         <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
                         {m.name}
                         <span className="text-xs text-emerald-500/60">({m.provider})</span>
@@ -568,17 +578,18 @@ export default function Dashboard() {
                   </div>
                 </div>
               )}
-              {/* โมเดลหายชั่วคราว */}
+              {/* โดดเรียน */}
               {statusData.modelChanges.warning.length > 0 && (
                 <div className="glass rounded-2xl p-4 border border-amber-500/30 bg-amber-500/5">
                   <div className="flex items-center gap-2 mb-3">
-                    <span className="text-lg">⚠️</span>
-                    <span className="font-bold text-amber-400">หายชั่วคราว ({statusData.modelChanges.warning.length})</span>
-                    <span className="text-xs text-gray-500">ไม่เจอ 2-48 ชม. อาจกลับมา</span>
+                    <span className="text-lg">🏃</span>
+                    <span className="font-bold text-amber-400">โดดเรียน! ({statusData.modelChanges.warning.length})</span>
+                    <span className="text-xs text-gray-500">หายไป 2-48 ชม. — อาจแอบไปนอนหลับ</span>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {statusData.modelChanges.warning.map((m) => (
-                      <span key={m.id} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm text-amber-300">
+                      <span key={m.id} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm text-amber-300 hover:scale-105 transition-transform cursor-default">
+                        <span className="text-xs">💤</span>
                         {m.name}
                         <span className="text-xs text-amber-500/60">({m.provider})</span>
                       </span>
@@ -586,17 +597,18 @@ export default function Dashboard() {
                   </div>
                 </div>
               )}
-              {/* โมเดลหายถาวร */}
+              {/* ลาออกจากโรงเรียน */}
               {statusData.modelChanges.missing.length > 0 && (
                 <div className="glass rounded-2xl p-4 border border-red-500/30 bg-red-500/5">
                   <div className="flex items-center gap-2 mb-3">
-                    <span className="text-lg">💀</span>
-                    <span className="font-bold text-red-400">หายถาวร ({statusData.modelChanges.missing.length})</span>
-                    <span className="text-xs text-gray-500">ไม่เจอเกิน 48 ชม.</span>
+                    <span className="text-lg">🪦</span>
+                    <span className="font-bold text-red-400">ลาออกจากโรงเรียน ({statusData.modelChanges.missing.length})</span>
+                    <span className="text-xs text-gray-500">หายไปเกิน 48 ชม. — ไปดีแล้ว</span>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {statusData.modelChanges.missing.map((m) => (
-                      <span key={m.id} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400 line-through opacity-70">
+                      <span key={m.id} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400 line-through opacity-60 hover:opacity-100 transition-opacity cursor-default">
+                        <span className="text-xs">👋</span>
                         {m.name}
                         <span className="text-xs text-red-500/60">({m.provider})</span>
                       </span>
@@ -617,9 +629,9 @@ export default function Dashboard() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
               </span>
-              อันดับโมเดล
+              ผลสอบ — ใครเก่งสุด?
             </h2>
-            <span className="text-sm text-gray-500">{leaderboard.length} โมเดลมีคะแนน</span>
+            <span className="text-sm text-gray-500">{leaderboard.length} คนเข้าสอบ</span>
           </div>
 
           {loading ? (
@@ -629,7 +641,7 @@ export default function Dashboard() {
           ) : leaderboard.length === 0 ? (
             <div className="glass rounded-2xl p-12 text-center text-gray-500">
               <div className="text-5xl mb-3">🏆</div>
-              <p>ยังไม่มีผล Benchmark — กด &quot;รันตอนนี้&quot; เพื่อเริ่ม</p>
+              <p>ยังไม่มีผลสอบ — กด &quot;สั่งเช็คชื่อเลย!&quot; เพื่อเริ่มสอบ</p>
             </div>
           ) : (
             <div className="glass rounded-2xl overflow-hidden">
@@ -712,9 +724,79 @@ export default function Dashboard() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
             </span>
-            <h2 className="text-2xl font-bold text-white">แชทกับโมเดล</h2>
+            <h2 className="text-2xl font-bold text-white">สอบปากเปล่า</h2>
           </div>
           <ChatPanel availableModels={availableModels} />
+        </section>
+
+        {/* ── Section: Smart Auto-Routing ───────────────────────────────── */}
+        <section id="smart-routing" className="animate-fade-in-up stagger-5">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-indigo-400">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+            </span>
+            <span className="font-bold text-white text-2xl">จัดห้องเรียนอัตโนมัติ</span>
+            <span className="text-xs text-gray-400 ml-1">ครูเลือกเด็กเก่งให้ตามวิชา</span>
+          </div>
+          <RoutingLearnPanel />
+        </section>
+
+        {/* ── Section: Model Performance Trend ─────────────────────────────── */}
+        <section id="trend" className="animate-fade-in-up stagger-5">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-500/20 text-cyan-400">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+              </svg>
+            </span>
+            <span className="font-bold text-white text-2xl">พัฒนาการนักเรียน</span>
+            <span className="text-xs text-gray-400 ml-1">เก่งขึ้นหรือแย่ลง?</span>
+          </div>
+          <TrendPanel />
+        </section>
+
+        {/* ── Section: Provider Uptime ─────────────────────────────────────── */}
+        <section id="uptime" className="animate-fade-in-up stagger-5">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-400">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </span>
+            <span className="font-bold text-white text-2xl">สถิติขาด/ลา/มาสาย</span>
+            <span className="text-xs text-gray-400 ml-1">Provider ไหนขยัน ไหนขี้เกียจ</span>
+          </div>
+          <UptimePanel />
+        </section>
+
+        {/* ── Section: Token Cost Optimizer ─────────────────────────────────── */}
+        <section id="cost-opt" className="animate-fade-in-up stagger-5">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </span>
+            <span className="font-bold text-white text-2xl">ค่าเทอม</span>
+            <span className="text-xs text-gray-400 ml-1">ใช้ไปเท่าไหร่ ประหยัดได้อีก!</span>
+          </div>
+          <CostOptimizerPanel />
+        </section>
+
+        {/* ── Section: School Bell ─────────────────────────────────────────── */}
+        <section id="school-bell" className="animate-fade-in-up stagger-5">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-yellow-500/20 text-yellow-400">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+            </span>
+            <span className="font-bold text-white text-2xl">ระฆังโรงเรียน</span>
+            <span className="text-xs text-gray-400 ml-1">School Bell Alert</span>
+          </div>
+          <SchoolBellPanel />
         </section>
 
         {/* ── Section: Complaint System ─────────────────────────────────── */}
@@ -725,8 +807,8 @@ export default function Dashboard() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
               </svg>
             </span>
-            <span className="font-bold text-white text-2xl">ระบบร้องเรียน</span>
-            <span className="text-xs text-gray-400 ml-1">Complaint System</span>
+            <span className="font-bold text-white text-2xl">ใบร้องเรียน — เด็กไหนเกเร?</span>
+            <span className="text-xs text-gray-400 ml-1">ฟ้องครูเลย!</span>
           </div>
           <ComplaintPanel />
         </section>
@@ -739,7 +821,7 @@ export default function Dashboard() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
               </svg>
             </span>
-            <span className="font-bold text-white text-2xl">Gateway Log</span>
+            <span className="font-bold text-white text-2xl">สมุดจดงาน</span>
             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-400">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
@@ -747,13 +829,13 @@ export default function Dashboard() {
               </span>
               LIVE
             </span>
-            <span className="text-xs text-gray-500">{gatewayLogs.length} รายการ</span>
+            <span className="text-xs text-gray-500">{gatewayLogs.length} หน้า</span>
           </div>
 
           <div className="glass rounded-2xl overflow-hidden">
             <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
               {gatewayLogs.length === 0 ? (
-                <div className="px-4 py-8 text-center text-gray-600">ยังไม่มี request เข้า Gateway</div>
+                <div className="px-4 py-8 text-center text-gray-600">ยังไม่มีเด็กมาส่งการบ้าน</div>
               ) : (
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-gray-900/90 backdrop-blur">
@@ -814,14 +896,14 @@ export default function Dashboard() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </span>
-            <span className="font-bold text-white text-2xl">บันทึกการทำงาน</span>
+            <span className="font-bold text-white text-2xl">บันทึกประจำวันของครู</span>
             <span className="text-xs text-gray-500">{logs.length} รายการล่าสุด</span>
           </div>
 
           <div className="glass rounded-2xl overflow-hidden">
             <div className="font-mono text-xs divide-y divide-white/5 max-h-[500px] overflow-y-auto">
               {logs.length === 0 ? (
-                <div className="px-4 py-8 text-center text-gray-600">ยังไม่มีบันทึก</div>
+                <div className="px-4 py-8 text-center text-gray-600">ครูยังไม่ได้จดอะไร</div>
               ) : (
                 logs.map((log, i) => {
                   const rawLog = log.createdAt.includes("Z") || log.createdAt.includes("+") ? log.createdAt : log.createdAt + "Z";
@@ -846,7 +928,7 @@ export default function Dashboard() {
 
         {/* ── Footer ──────────────────────────────────────────────────────── */}
         <footer className="text-center text-xs text-gray-700 border-t border-white/5 pt-8 pb-4">
-          BCProxyAI — Smart AI Gateway สำหรับ <span className="text-gray-500">OpenClaw</span> และ <span className="text-gray-500">HiClaw</span>
+          BCProxyAI — โรงเรียน AI ที่คัดแต่เด็กเก่ง 🏫 สำหรับ <span className="text-gray-500">OpenClaw</span> และ <span className="text-gray-500">HiClaw</span>
         </footer>
 
       </div>

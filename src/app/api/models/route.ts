@@ -32,6 +32,8 @@ export async function GET(req: NextRequest) {
           m.context_length as contextLength,
           m.tier,
           m.nickname,
+          m.supports_vision as supportsVision,
+          m.supports_tools as supportsTools,
           m.first_seen as firstSeen,
           m.last_seen as lastSeen,
           h.status as healthStatus,
@@ -76,6 +78,8 @@ export async function GET(req: NextRequest) {
       contextLength: number;
       tier: string;
       nickname: string | null;
+      supportsVision: number;
+      supportsTools: number;
       firstSeen: string;
       lastSeen: string;
       healthStatus: string | null;
@@ -106,6 +110,8 @@ export async function GET(req: NextRequest) {
         modelId: r.modelId,
         contextLength: r.contextLength,
         tier: r.tier,
+        supportsVision: r.supportsVision === 1,
+        supportsTools: r.supportsTools === 1,
         health: {
           status: healthStatusFinal,
           latencyMs: r.latencyMs ?? 0,

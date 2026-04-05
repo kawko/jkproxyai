@@ -101,9 +101,13 @@ export async function GET() {
     `).all();
 
     // โมเดลหายชั่วคราว (last_seen 2-48 ชม.)
+    // กรอง: ไม่รวม model ที่ first_seen ภายใน 24 ชม. (ป้องกันโผล่ทั้ง "ใหม่" และ "หายชั่วคราว" พร้อมกัน)
     const warningModels = db.prepare(`
       SELECT id, name, provider, model_id, context_length, tier, last_seen as lastSeen
-      FROM models WHERE last_seen < datetime('now', '-2 hours') AND last_seen >= datetime('now', '-48 hours')
+      FROM models
+      WHERE last_seen < datetime('now', '-2 hours')
+        AND last_seen >= datetime('now', '-48 hours')
+        AND first_seen < datetime('now', '-24 hours')
       ORDER BY last_seen DESC
     `).all();
 

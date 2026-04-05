@@ -10,6 +10,20 @@ export const PROVIDER_URLS: Record<string, string> = {
   ollama: `${process.env.OLLAMA_BASE_URL || "http://localhost:11434"}/v1/chat/completions`,
 };
 
+// Embedding endpoints (providers that support embeddings)
+export const PROVIDER_EMBEDDING_URLS: Record<string, string> = {
+  openrouter: "https://openrouter.ai/api/v1/embeddings",
+  mistral: "https://api.mistral.ai/v1/embeddings",
+  ollama: `${process.env.OLLAMA_BASE_URL || "http://localhost:11434"}/v1/embeddings`,
+};
+
+// Legacy completions endpoints (providers that support /v1/completions)
+export const PROVIDER_COMPLETIONS_URLS: Record<string, string> = {
+  openrouter: "https://openrouter.ai/api/v1/completions",
+  groq: "https://api.groq.com/openai/v1/completions",
+  ollama: `${process.env.OLLAMA_BASE_URL || "http://localhost:11434"}/v1/completions`,
+};
+
 export const PROVIDER_LABELS: Record<string, string> = {
   openrouter: "OR",
   kilo: "Kilo",

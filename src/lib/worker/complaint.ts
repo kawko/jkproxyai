@@ -1,6 +1,7 @@
 import { getDb } from "@/lib/db/schema";
 import { askModel, judgeAnswer } from "./benchmark";
 import { generateNickname } from "./scanner";
+import { emitEvent } from "@/lib/routing-learn";
 
 // Complaint category to exam question mapping
 const CATEGORY_EXAM_QUESTIONS: Record<string, string[]> = {
@@ -174,6 +175,7 @@ export async function processComplaint(
     db.prepare("UPDATE complaints SET status = 'blacklisted' WHERE model_id = ? AND created_at >= ?")
       .run(dbModelId, `${today}T00:00:00`);
 
+    emitEvent("model_banned", `${modelId} ถูกแบน 24 ชม.`, `ถูกร้องเรียน ${dailyCount.cnt} ครั้งวันนี้`, provider, dbModelId, "error");
     logWorker("complaint", `${modelId} BLACKLISTED — ${dailyCount.cnt} complaints today`, "error");
   }
 }

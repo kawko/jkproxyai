@@ -137,12 +137,18 @@ export function ModelGrid({ sortedModels, availableCount, cooldownCount, unknown
                   </div>
                 </div>
 
-                {/* Provider + context */}
-                <div className="flex items-center gap-1.5 mb-2">
+                {/* Provider + context + capabilities */}
+                <div className="flex items-center gap-1.5 mb-2 flex-wrap">
                   <span className={`text-xs px-1.5 py-0.5 rounded font-semibold ${pc.text} ${pc.bg} border ${pc.border}`}>
                     {model.provider}
                   </span>
                   <span className="text-xs text-gray-600">{fmtCtx(model.contextLength)}</span>
+                  {model.supportsVision && (
+                    <span className="text-[10px] px-1 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30" title="อ่านรูปภาพได้">👁 ดูรูปได้</span>
+                  )}
+                  {model.supportsTools && (
+                    <span className="text-[10px] px-1 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30" title="รองรับ Tool Calling">🔧 tools</span>
+                  )}
                   {speedInfo && (
                     <span className="text-xs text-gray-600">{speedInfo.emoji} {fmtMs(model.health.latencyMs)}</span>
                   )}

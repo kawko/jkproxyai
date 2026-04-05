@@ -1,5 +1,6 @@
 import { getDb } from "@/lib/db/schema";
 import { processComplaint } from "@/lib/worker/complaint";
+import { emitEvent } from "@/lib/routing-learn";
 
 /**
  * Auto-detect bad responses and file complaints automatically
@@ -65,6 +66,7 @@ export function autoDetectComplaint(
     // Process re-exam in background
     processComplaint(complaintId, model.id, provider, modelId, category).catch(() => {});
 
+    emitEvent("complaint", `ร้องเรียนอัตโนมัติ: ${modelId}`, `ประเภท: ${category}`, provider, modelId, "warn");
     console.log(`[Auto-Complaint] ${provider}/${modelId}: ${category}`);
   } catch {
     // Non-critical

@@ -1,5 +1,6 @@
 import { getDb } from "@/lib/db/schema";
 import { getNextApiKey } from "@/lib/api-keys";
+import { emitEvent } from "@/lib/routing-learn";
 
 interface ModelRow {
   id: string;
@@ -9,6 +10,39 @@ interface ModelRow {
   context_length: number;
   tier: string;
   description?: string;
+  supports_vision?: number;  // 1 = yes, 0 = no, -1 = unknown
+  supports_tools?: number;
+}
+
+// ─── Vision & Tools detection from model name / metadata ─────────────────────
+
+const VISION_PATTERNS = [
+  /vision/i, /llava/i, /gemini/i, /gemma.*it/i, /pixtral/i,
+  /gpt-4o/i, /gpt-4-turbo/i, /claude/i, /qwen.*vl/i, /qwen2\.5-vl/i,
+  /internvl/i, /minicpm.*v/i, /cogvlm/i, /phi-3.*vision/i,
+  /deepseek-vl/i, /llama-3\.2.*vision/i, /llama-4/i,
+  /molmo/i, /moondream/i, /bakllava/i,
+];
+
+const TOOLS_PATTERNS = [
+  /gemini/i, /gpt-4/i, /gpt-3\.5/i, /claude/i, /mistral.*large/i,
+  /mistral.*medium/i, /mixtral/i, /command-r/i, /qwen/i, /llama-3/i,
+  /llama-4/i, /deepseek/i, /hermes/i, /firefunction/i, /gorilla/i,
+  /nexusraven/i, /functionary/i,
+];
+
+function detectVision(modelId: string, name: string, providerMeta?: { vision?: boolean }): number {
+  if (providerMeta?.vision === true) return 1;
+  if (providerMeta?.vision === false) return 0;
+  const combined = `${modelId} ${name}`;
+  return VISION_PATTERNS.some(p => p.test(combined)) ? 1 : 0;
+}
+
+function detectTools(modelId: string, name: string, providerMeta?: { tools?: boolean }): number {
+  if (providerMeta?.tools === true) return 1;
+  if (providerMeta?.tools === false) return 0;
+  const combined = `${modelId} ${name}`;
+  return TOOLS_PATTERNS.some(p => p.test(combined)) ? 1 : 0;
 }
 
 export function calcTier(contextLength: number): string {
@@ -40,6 +74,8 @@ async function fetchOpenRouterModels(): Promise<ModelRow[]> {
     for (const m of json.data ?? []) {
       if (m.pricing?.prompt !== "0") continue;
       const ctx = m.context_length ?? 0;
+      // OpenRouter provides architecture metadata
+      const arch = m.architecture ?? {};
       models.push({
         id: `openrouter:${m.id}`,
         name: m.name ?? m.id,
@@ -48,6 +84,8 @@ async function fetchOpenRouterModels(): Promise<ModelRow[]> {
         context_length: ctx,
         tier: calcTier(ctx),
         description: m.description ?? undefined,
+        supports_vision: detectVision(m.id, m.name ?? "", { vision: arch.modality?.includes("image") }),
+        supports_tools: detectTools(m.id, m.name ?? "", { tools: arch.tool_use }),
       });
     }
     return models;
@@ -81,6 +119,8 @@ async function fetchKiloModels(): Promise<ModelRow[]> {
         context_length: ctx,
         tier: calcTier(ctx),
         description: m.description ?? undefined,
+        supports_vision: detectVision(mid, m.name ?? ""),
+        supports_tools: detectTools(mid, m.name ?? ""),
       });
     }
     return models;
@@ -104,6 +144,8 @@ async function fetchGoogleModels(): Promise<ModelRow[]> {
       const methods: string[] = m.supportedGenerationMethods ?? [];
       if (!methods.includes("generateContent")) continue;
       const ctx = m.inputTokenLimit ?? 0;
+      // Google API provides supported methods info
+      const hasVision = methods.includes("generateContent") && /gemini/i.test(mid);
       models.push({
         id: `google:${mid}`,
         name: m.displayName ?? mid,
@@ -112,6 +154,8 @@ async function fetchGoogleModels(): Promise<ModelRow[]> {
         context_length: ctx,
         tier: calcTier(ctx),
         description: m.description ?? undefined,
+        supports_vision: hasVision ? 1 : detectVision(mid, m.displayName ?? ""),
+        supports_tools: detectTools(mid, m.displayName ?? ""),
       });
     }
     return models;
@@ -141,6 +185,8 @@ async function fetchGroqModels(): Promise<ModelRow[]> {
         context_length: ctx,
         tier: calcTier(ctx),
         description: undefined,
+        supports_vision: detectVision(mid, m.id ?? ""),
+        supports_tools: detectTools(mid, m.id ?? ""),
       });
     }
     return models;
@@ -176,6 +222,8 @@ async function fetchCerebrasModels(): Promise<ModelRow[]> {
         context_length: ctx,
         tier: calcTier(ctx),
         description: undefined,
+        supports_vision: detectVision(mid, m.id ?? ""),
+        supports_tools: detectTools(mid, m.id ?? ""),
       });
     }
     return models;
@@ -207,6 +255,8 @@ async function fetchSambaNovaModels(): Promise<ModelRow[]> {
         context_length: ctx,
         tier: calcTier(ctx),
         description: undefined,
+        supports_vision: detectVision(mid, m.id ?? ""),
+        supports_tools: detectTools(mid, m.id ?? ""),
       });
     }
     return models;
@@ -238,6 +288,8 @@ async function fetchMistralModels(): Promise<ModelRow[]> {
         context_length: ctx,
         tier: calcTier(ctx),
         description: undefined,
+        supports_vision: detectVision(mid, m.id ?? "", { vision: m.capabilities?.vision }),
+        supports_tools: detectTools(mid, m.id ?? "", { tools: m.capabilities?.function_calling }),
       });
     }
     return models;
@@ -270,6 +322,8 @@ async function fetchOllamaModels(): Promise<ModelRow[]> {
         context_length: ctx,
         tier: calcTier(ctx),
         description: `Local model (${sizeGB.toFixed(1)}GB)`,
+        supports_vision: detectVision(name, name),
+        supports_tools: detectTools(name, name),
       });
     }
     return models;
@@ -335,11 +389,11 @@ export async function scanModels(): Promise<{ found: number; new: number; disapp
   let newCount = 0;
 
   const insertStmt = db.prepare(`
-    INSERT OR IGNORE INTO models (id, name, provider, model_id, context_length, tier, description)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT OR IGNORE INTO models (id, name, provider, model_id, context_length, tier, description, supports_vision, supports_tools)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const updateStmt = db.prepare(`
-    UPDATE models SET last_seen = datetime('now'), context_length = ?, tier = ?
+    UPDATE models SET last_seen = datetime('now'), context_length = ?, tier = ?, supports_vision = ?, supports_tools = ?
     WHERE id = ?
   `);
 
@@ -348,14 +402,16 @@ export async function scanModels(): Promise<{ found: number; new: number; disapp
   const upsertMany = db.transaction((models: ModelRow[]) => {
     for (const m of models) {
       const result = insertStmt.run(
-        m.id, m.name, m.provider, m.model_id, m.context_length, m.tier, m.description ?? null
+        m.id, m.name, m.provider, m.model_id, m.context_length, m.tier, m.description ?? null,
+        m.supports_vision ?? -1, m.supports_tools ?? -1
       );
       if (result.changes > 0) {
         newCount++;
         newModels.push(m);
+        emitEvent("model_new", `โมเดลใหม่: ${m.name}`, `${m.provider} — ${calcTier(m.context_length).toUpperCase()} ${m.context_length >= 1000 ? Math.round(m.context_length/1000)+"K" : m.context_length} ctx`, m.provider, m.id, "success");
         logWorker("scan", `🆕 โมเดลใหม่: ${m.name} (${m.provider}) — ${calcTier(m.context_length).toUpperCase()} ${m.context_length >= 1000 ? Math.round(m.context_length/1000)+"K" : m.context_length} ctx`, "success");
       } else {
-        updateStmt.run(m.context_length, m.tier, m.id);
+        updateStmt.run(m.context_length, m.tier, m.supports_vision ?? -1, m.supports_tools ?? -1, m.id);
       }
     }
   });

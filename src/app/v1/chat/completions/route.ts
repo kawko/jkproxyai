@@ -7,6 +7,7 @@ import { compressMessages } from "@/lib/prompt-compress";
 import { openAIError, ensureChatCompletionFields } from "@/lib/openai-compat";
 import { autoDetectComplaint } from "@/lib/auto-complaint";
 import { getReputationScore } from "@/lib/worker/complaint";
+import { detectPromptCategory, recordRoutingResult, getBestModelsForCategory, emitEvent } from "@/lib/routing-learn";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -199,12 +200,14 @@ function extractUserMessage(body: Record<string, unknown>): string | null {
   return JSON.stringify(last.content).slice(0, 500);
 }
 
-function logCooldown(modelId: string, errorMsg: string, httpStatus = 0) {
+function logCooldown(modelId: string, errorMsg: string, httpStatus = 0, overrideMinutes?: number) {
   try {
     const db = getDb();
     // Smart cooldown based on error type
     let cooldownMs: number;
-    if (httpStatus === 413) {
+    if (overrideMinutes !== undefined) {
+      cooldownMs = overrideMinutes * 60 * 1000;
+    } else if (httpStatus === 413) {
       cooldownMs = 15 * 60 * 1000;    // 15 นาที — request ใหญ่เกินไป (ลองใหม่ได้เร็ว)
     } else if (httpStatus === 429) {
       cooldownMs = 30 * 60 * 1000;    // 30 นาที — rate limit
@@ -420,6 +423,7 @@ export async function POST(req: NextRequest) {
     }
 
     const estInputTokens = estimateTokens(body);
+    const promptCategory = detectPromptCategory(extractUserMessage(body) ?? "");
 
     // ---- Consensus mode: send to 3 providers, pick best answer ----
     if (parsed.mode === "consensus") {
@@ -544,6 +548,16 @@ export async function POST(req: NextRequest) {
     // ---- Smart routing: auto / fast / tools / thai ----
     const candidates = selectModelsByMode(parsed.mode, caps);
 
+    // Smart routing: boost models that perform well for this prompt category
+    const learnedBest = getBestModelsForCategory(promptCategory);
+    if (learnedBest.length > 0) {
+      // Move learned-best models to front (preserve order of rest)
+      const bestSet = new Set(learnedBest);
+      const boosted = candidates.filter(c => bestSet.has(c.id));
+      const rest = candidates.filter(c => !bestSet.has(c.id));
+      candidates.splice(0, candidates.length, ...boosted, ...rest);
+    }
+
     // ถ้าไม่มี candidate → ลองไม่ filter context → ลองรวม cooldown (สุ่มเลือก ดีกว่า 503)
     let finalCandidates = candidates;
     if (finalCandidates.length === 0) {
@@ -604,12 +618,22 @@ export async function POST(req: NextRequest) {
 
         if (response.ok) {
           const latency = Date.now() - startTime;
-          // Model ทำงานได้ → clear cooldown
-          try {
-            const db = getDb();
-            db.prepare("DELETE FROM health_logs WHERE model_id = ? AND cooldown_until > datetime('now')").run(dbModelId);
-          } catch { /* silent */ }
+          // ช้าเกิน 30s → cooldown 15 นาที แต่ยังส่งผลลัพธ์ให้ user
+          const SLOW_THRESHOLD_MS = 30_000;
+          const SLOW_COOLDOWN_MINUTES = 15;
+          if (latency > SLOW_THRESHOLD_MS && provider !== "ollama") {
+            logCooldown(dbModelId, `Slow response: ${(latency / 1000).toFixed(1)}s > ${SLOW_THRESHOLD_MS / 1000}s threshold`, 0, SLOW_COOLDOWN_MINUTES);
+            emitEvent("provider_error", `${provider}/${actualModelId} ช้ามาก (${(latency / 1000).toFixed(1)}s)`, `ตอบช้าเกิน ${SLOW_THRESHOLD_MS / 1000}s → cooldown ${SLOW_COOLDOWN_MINUTES} นาที`, provider, actualModelId, "warn");
+          } else {
+            // Model ทำงานได้เร็วพอ → clear cooldown
+            try {
+              const db = getDb();
+              db.prepare("DELETE FROM health_logs WHERE model_id = ? AND cooldown_until > datetime('now')").run(dbModelId);
+            } catch { /* silent */ }
+          }
           const proxied = await buildProxiedResponse(response, provider, actualModelId, isStream, estInputTokens);
+          // Record routing success for learning
+          recordRoutingResult(dbModelId, provider, promptCategory, true, latency);
           // Log with assistant response (extract from non-stream)
           if (!isStream) {
             try {
@@ -632,15 +656,21 @@ export async function POST(req: NextRequest) {
         // Non-200: cooldown for cloud providers only (Ollama = local, never cooldown)
         const errText = await response.text().catch(() => "");
         lastError = `${provider}/${actualModelId}: HTTP ${response.status}`;
+        recordRoutingResult(dbModelId, provider, promptCategory, false, Date.now() - startTime);
         const st = response.status;
         if (provider !== "ollama" && (st === 429 || st === 413 || st === 422 || st >= 500 || st === 401 || st === 403)) {
           logCooldown(dbModelId, `HTTP ${st}: ${errText}`, st);
+          if (st >= 500) {
+            emitEvent("provider_error", `${provider} ล่ม (HTTP ${st})`, errText.slice(0, 200), provider, actualModelId, "error");
+          }
         }
         // Always retry next model regardless
         continue;
       } catch (err) {
         lastError = `${provider}/${actualModelId}: ${String(err)}`;
         logCooldown(dbModelId, lastError);
+        recordRoutingResult(dbModelId, provider, promptCategory, false, Date.now() - startTime);
+        emitEvent("provider_error", `${provider} เชื่อมต่อไม่ได้`, String(err).slice(0, 200), provider, actualModelId, "warn");
         continue;
       }
     }

@@ -153,5 +153,35 @@ function initSchema(db: Database.Database) {
       FOREIGN KEY (complaint_id) REFERENCES complaints(id),
       FOREIGN KEY (model_id) REFERENCES models(id)
     );
+
+    -- Smart routing: เก็บ prompt category → model performance
+    CREATE TABLE IF NOT EXISTS routing_stats (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      model_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      prompt_category TEXT NOT NULL DEFAULT 'general',
+      success INTEGER DEFAULT 1,
+      latency_ms INTEGER DEFAULT 0,
+      complaint_after INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (model_id) REFERENCES models(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_routing_stats_cat ON routing_stats(prompt_category, provider);
+    CREATE INDEX IF NOT EXISTS idx_routing_stats_model ON routing_stats(model_id);
+
+    -- School Bell: event log สำหรับ real-time notifications
+    CREATE TABLE IF NOT EXISTS events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      detail TEXT,
+      provider TEXT,
+      model_id TEXT,
+      severity TEXT DEFAULT 'info',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at);
   `);
 }
