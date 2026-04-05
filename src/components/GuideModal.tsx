@@ -104,8 +104,8 @@ function UsageGuide() {
           คิดง่ายๆ ว่า: OpenClaw ส่งคำถามมา &rarr; BCProxyAI เลือกโมเดล AI ฟรีตัวที่ดีที่สุดให้ &rarr; ส่งคำตอบกลับ
         </Paragraph>
         <Paragraph>
-          สแกนหาโมเดล AI ฟรีจาก 4 ผู้ให้บริการ (OpenRouter, Kilo AI, Google AI Studio, Groq)
-          แล้วเลือกตัวที่ดีที่สุดให้อัตโนมัติ ใช้งานผ่าน API ที่เข้ากันได้กับ OpenAI 100%
+          สแกนหาโมเดล AI ฟรีจาก 13 ผู้ให้บริการ (OpenRouter, Kilo, Google, Groq, Cerebras, SambaNova, Mistral, Ollama, GitHub, Fireworks, Cohere, Cloudflare, HuggingFace)
+          แล้วเลือกตัวที่ดีที่สุดตามความถนัดให้อัตโนมัติ ใช้งานผ่าน API ที่เข้ากันได้กับ OpenAI 100%
         </Paragraph>
       </div>
 
@@ -166,9 +166,9 @@ kilo/nvidia/nemotron-3-super-120b-a12b:free`}</Code>
         <SectionTitle>Worker อัตโนมัติ</SectionTitle>
         <Paragraph>Worker (โปรแกรมทำงานเบื้องหลัง) ทำงาน 3 ขั้นตอน ทุก 1 ชั่วโมง:</Paragraph>
         <ul className="list-decimal list-inside text-sm text-gray-400 space-y-2 ml-2">
-          <li><span className="text-blue-300 font-medium">Scan</span> -- สแกนโมเดลฟรีจาก 4 ผู้ให้บริการ ตรวจจับโมเดลใหม่/หายไป</li>
-          <li><span className="text-emerald-300 font-medium">Health Check</span> -- ส่ง ping ทดสอบ พักโมเดลที่ติด limit 2 ชม. ทดสอบ tool/vision support</li>
-          <li><span className="text-indigo-300 font-medium">Benchmark</span> -- สอบ 3 คำถามภาษาไทย ให้คะแนน 0-10 ข้ามโมเดลที่สอบตก 7 วัน</li>
+          <li><span className="text-blue-300 font-medium">Scan</span> -- สแกนโมเดลฟรีจาก 13 ผู้ให้บริการ ตรวจจับโมเดลใหม่/หายไป</li>
+          <li><span className="text-emerald-300 font-medium">Health Check</span> -- ส่ง ping ทดสอบ พักโมเดลที่ติด limit ทดสอบ tool/vision support</li>
+          <li><span className="text-indigo-300 font-medium">Benchmark</span> -- สอบ 10 ข้อ 8 หมวด (Thai, Code, Math, Vision, Creative...) ให้คะแนน 0-10 เลือก model ตามความถนัด</li>
         </ul>
       </div>
 
@@ -472,10 +472,19 @@ npm start           # เริ่มรัน`}</Code>
         <SectionTitle>วิธีสมัคร API Key (ฟรี)</SectionTitle>
         <table className="w-full">
           <tbody>
-            <TableRow label="OpenRouter" value="https://openrouter.ai/keys -- จำเป็น สมัครฟรี มีโมเดลฟรีมากที่สุด" />
-            <TableRow label="Groq" value="https://console.groq.com/keys -- จำเป็น สมัครฟรี เร็วมาก" />
-            <TableRow label="Kilo AI" value="https://kilo.ai -- ไม่บังคับ ไม่ต้องใช้ key ก็สแกนได้" />
-            <TableRow label="Google AI" value="https://aistudio.google.com/apikey -- ไม่บังคับ สมัครฟรี" />
+            <TableRow label="OpenRouter" value="OPENROUTER_API_KEY -- openrouter.ai/keys (จำเป็น)" />
+            <TableRow label="Groq" value="GROQ_API_KEY -- console.groq.com/keys (จำเป็น เร็วมาก)" />
+            <TableRow label="Kilo AI" value="KILO_API_KEY -- kilo.ai (ไม่บังคับ)" />
+            <TableRow label="Google AI" value="GOOGLE_AI_API_KEY -- aistudio.google.com/apikey (แนะนำ Vision)" />
+            <TableRow label="Cerebras" value="CEREBRAS_API_KEY -- cloud.cerebras.ai (เร็วมาก)" />
+            <TableRow label="SambaNova" value="SAMBANOVA_API_KEY -- cloud.sambanova.ai (เร็ว)" />
+            <TableRow label="Mistral" value="MISTRAL_API_KEY -- console.mistral.ai (หลายโมเดล)" />
+            <TableRow label="Ollama" value="ไม่ต้องใช้ key -- ใช้ local model (ต้องติดตั้ง Ollama)" />
+            <TableRow label="GitHub" value="GITHUB_MODELS_TOKEN -- github.com/settings/tokens" />
+            <TableRow label="Fireworks" value="FIREWORKS_API_KEY -- fireworks.ai" />
+            <TableRow label="Cohere" value="COHERE_API_KEY -- dashboard.cohere.com/api-keys" />
+            <TableRow label="Cloudflare" value="CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID -- dash.cloudflare.com" />
+            <TableRow label="HuggingFace" value="HF_TOKEN -- huggingface.co/settings/tokens" />
           </tbody>
         </table>
         <SubTitle>ตัวอย่างวิธีสมัคร OpenRouter</SubTitle>
@@ -590,7 +599,7 @@ function ApiGuide() {
         <table className="w-full">
           <tbody>
             <TableRow label="X-BCProxy-Model" value="โมเดลที่ถูกเลือกใช้จริง" />
-            <TableRow label="X-BCProxy-Provider" value="ผู้ให้บริการ (openrouter/kilo/groq)" />
+            <TableRow label="X-BCProxy-Provider" value="ผู้ให้บริการ (openrouter/kilo/google/groq/cerebras/sambanova/mistral/ollama/...)" />
           </tbody>
         </table>
       </div>
@@ -652,7 +661,7 @@ function AboutGuide() {
             <span className="text-gray-600">&rarr;</span>
             <div className="glass rounded-lg px-4 py-2 border border-amber-500/30">
               <div className="text-xs text-amber-300">ข้อสอบ</div>
-              <div className="text-sm font-bold text-white">3 คำถามภาษาไทย</div>
+              <div className="text-sm font-bold text-white">10 ข้อ 8 หมวด</div>
             </div>
             <span className="text-gray-600">&rarr;</span>
             <div className="glass rounded-lg px-4 py-2 border border-emerald-500/30">
@@ -664,12 +673,19 @@ function AboutGuide() {
       </div>
 
       <div>
-        <SectionTitle>ข้อสอบ (3 ข้อ)</SectionTitle>
+        <SectionTitle>ข้อสอบ (10 ข้อ / 8 หมวด)</SectionTitle>
         <div className="space-y-2">
           {[
-            { q: "สวัสดีครับ วันนี้อากาศเป็นยังไงบ้าง?", purpose: "ทดสอบการทักทาย + ตอบคำถามทั่วไป" },
-            { q: "แนะนำอาหารไทยมา 3 เมนู", purpose: "ทดสอบความรู้วัฒนธรรมไทย + การจัดรูปแบบคำตอบ" },
-            { q: "กรุงเทพมหานครอยู่ประเทศอะไร?", purpose: "ทดสอบความรู้ทั่วไป + ตอบถูกต้อง" },
+            { q: "สรุปให้สั้นใน 1 ประโยค (ไทย)", purpose: "หมวด Thai — สรุปความภาษาไทย" },
+            { q: "แก้ประโยคให้สละสลวย (ไทย)", purpose: "หมวด Thai — ไวยากรณ์ไทย" },
+            { q: "เขียน Python is_prime(n)", purpose: "หมวด Code — เขียนโค้ดได้ถูกต้อง" },
+            { q: "x+3=7 แล้ว x²+2x=?", purpose: "หมวด Math — แก้สมการ" },
+            { q: "ตอบเป็น JSON เท่านั้น", purpose: "หมวด Instruction — ทำตามคำสั่ง" },
+            { q: "แต่งกลอนสุภาพ 1 บท", purpose: "หมวด Creative — ความคิดสร้างสรรค์" },
+            { q: "อธิบาย photosynthesis แบบเด็ก 10 ขวบ", purpose: "หมวด Knowledge — ความรู้ทั่วไป" },
+            { q: "อธิบายภาพ (ส่งรูปจริง)", purpose: "หมวด Vision — เห็นรูปได้จริงไหม?" },
+            { q: "อธิบายภาพ #2 (ส่งรูปจริง)", purpose: "หมวด Vision — ยืนยันว่าเห็นรูป" },
+            { q: "OpenAI Audio API endpoints?", purpose: "หมวด Audio — ความรู้ API" },
           ].map((item, i) => (
             <div key={i} className="glass rounded-lg p-3 border border-white/5">
               <div className="flex items-start gap-2">

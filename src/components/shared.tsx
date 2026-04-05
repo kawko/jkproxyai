@@ -87,6 +87,8 @@ export interface LeaderboardEntry {
   questionsAnswered: number;
   avgLatencyMs: number;
   tier: string;
+  supportsVision?: boolean;
+  categories?: Record<string, number>;
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -104,6 +106,7 @@ export const PROVIDER_COLORS: Record<string, { text: string; bg: string; border:
   fireworks:  { text: "text-red-300", bg: "bg-red-500/20", border: "border-red-500/40", glow: "rgba(239,68,68,0.5)" },
   cohere:     { text: "text-pink-300", bg: "bg-pink-500/20", border: "border-pink-500/40", glow: "rgba(236,72,153,0.5)" },
   cloudflare: { text: "text-amber-200", bg: "bg-amber-500/20", border: "border-amber-500/40", glow: "rgba(245,158,11,0.5)" },
+  huggingface: { text: "text-yellow-200", bg: "bg-yellow-500/20", border: "border-yellow-500/40", glow: "rgba(234,179,8,0.5)" },
 };
 
 export const TIER_LABELS: Record<string, string> = { large: "L", medium: "M", small: "S" };
@@ -173,7 +176,7 @@ export function GlowDot({ status }: { status: "available" | "cooldown" | "unknow
 
 export function ProviderBadge({ provider }: { provider: string }) {
   const c = PROVIDER_COLORS[provider] ?? { text: "text-gray-300", bg: "bg-gray-700/40", border: "border-gray-600/40" };
-  const labels: Record<string, string> = { openrouter: "OR", kilo: "Kilo", google: "GG", groq: "Groq", cerebras: "Cerebras", sambanova: "SN", mistral: "Mistral", ollama: "Local", github: "GitHub", fireworks: "FW", cohere: "Cohere", cloudflare: "CF" };
+  const labels: Record<string, string> = { openrouter: "OR", kilo: "Kilo", google: "GG", groq: "Groq", cerebras: "Cerebras", sambanova: "SN", mistral: "Mistral", ollama: "Local", github: "GitHub", fireworks: "FW", cohere: "Cohere", cloudflare: "CF", huggingface: "HF" };
   return (
     <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-bold ${c.text} ${c.bg} border ${c.border}`}>
       {labels[provider] ?? provider}

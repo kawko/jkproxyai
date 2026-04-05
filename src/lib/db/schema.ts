@@ -52,6 +52,7 @@ function initSchema(db: Database.Database) {
     CREATE TABLE IF NOT EXISTS benchmark_results (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       model_id TEXT NOT NULL,
+      category TEXT DEFAULT 'general',
       question TEXT NOT NULL,
       answer TEXT,
       score REAL DEFAULT 0,
@@ -80,6 +81,7 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_health_model ON health_logs(model_id);
     CREATE INDEX IF NOT EXISTS idx_health_checked ON health_logs(checked_at);
     CREATE INDEX IF NOT EXISTS idx_benchmark_model ON benchmark_results(model_id);
+    CREATE INDEX IF NOT EXISTS idx_benchmark_category ON benchmark_results(category);
     CREATE INDEX IF NOT EXISTS idx_worker_logs_created ON worker_logs(created_at);
 
     -- log gateway request/response
@@ -183,5 +185,19 @@ function initSchema(db: Database.Database) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at);
+
+    -- API Keys (web-managed, fallback to .env)
+    CREATE TABLE IF NOT EXISTS api_keys (
+      provider TEXT PRIMARY KEY,
+      api_key TEXT NOT NULL,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
   `);
+
+  // Migration: add category column to existing benchmark_results table
+  const cols = db.prepare("PRAGMA table_info(benchmark_results)").all() as { name: string }[];
+  const hasCategory = cols.some(c => c.name === "category");
+  if (!hasCategory) {
+    db.exec(`ALTER TABLE benchmark_results ADD COLUMN category TEXT DEFAULT 'general'`);
+  }
 }

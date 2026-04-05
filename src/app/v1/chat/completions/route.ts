@@ -7,7 +7,7 @@ import { compressMessages } from "@/lib/prompt-compress";
 import { openAIError, ensureChatCompletionFields } from "@/lib/openai-compat";
 import { autoDetectComplaint } from "@/lib/auto-complaint";
 import { getReputationScore } from "@/lib/worker/complaint";
-import { detectPromptCategory, recordRoutingResult, getBestModelsForCategory, emitEvent } from "@/lib/routing-learn";
+import { detectPromptCategory, recordRoutingResult, getBestModelsForCategory, getBestModelsByBenchmarkCategory, emitEvent } from "@/lib/routing-learn";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -99,25 +99,59 @@ function estimateTokens(body: Record<string, unknown>): number {
   return Math.ceil(str.length / 3);
 }
 
-function getAvailableModels(caps: RequestCapabilities): ModelRow[] {
+// Providers known to reliably support vision through OpenAI-compatible API
+const VISION_PRIORITY_PROVIDERS = ["google", "groq", "ollama", "github"];
+
+function getAvailableModels(caps: RequestCapabilities, benchmarkCategory?: string): ModelRow[] {
   // No cache — SQLite query < 1ms, cache causes Ollama priority issues
 
   const db = getDb();
   const now = new Date().toISOString();
 
   const filters: string[] = [
-    "(h.status IS NULL OR h.status = 'available' OR h.status = 'error')",
+    "(h.status IS NULL OR h.status = 'available')",
     "(h.cooldown_until IS NULL OR h.cooldown_until < ?)",
   ];
   if (caps.hasTools) filters.push("m.supports_tools = 1");
   if (caps.hasImages) filters.push("m.supports_vision = 1");
-  // No context filter — let provider return 413 if too large, gateway will fallback
 
   const whereClause = filters.join(" AND ");
-  // Prioritize: benchmarked models first (score > 0), then by score, then large context, then latency
+
+  // Use category-specific benchmark score when available
+  const benchmarkJoin = benchmarkCategory
+    ? `LEFT JOIN (
+        SELECT model_id, AVG(score) as avg_score, AVG(latency_ms) as avg_latency
+        FROM benchmark_results WHERE category = '${benchmarkCategory}'
+        GROUP BY model_id
+      ) bcat ON m.id = bcat.model_id
+      LEFT JOIN (
+        SELECT model_id, AVG(score) as avg_score_all, AVG(latency_ms) as avg_latency_all
+        FROM benchmark_results
+        GROUP BY model_id
+      ) ball ON m.id = ball.model_id`
+    : `LEFT JOIN (
+        SELECT model_id, AVG(score) as avg_score_all, AVG(latency_ms) as avg_latency_all
+        FROM benchmark_results
+        GROUP BY model_id
+      ) ball ON m.id = ball.model_id`;
+
+  // Score: prefer category-specific score, fallback to overall
+  const scoreExpr = benchmarkCategory
+    ? "COALESCE(bcat.avg_score, ball.avg_score_all, 0)"
+    : "COALESCE(ball.avg_score_all, 0)";
+  const latencyExpr = benchmarkCategory
+    ? "COALESCE(bcat.avg_latency, ball.avg_latency_all, 9999999)"
+    : "COALESCE(ball.avg_latency_all, 9999999)";
+
+  // Vision requests: boost providers known to work with images
+  const visionBoost = caps.hasImages
+    ? `, CASE WHEN m.provider IN ('google','groq','ollama','github') THEN 0 ELSE 1 END as vision_priority`
+    : "";
+  const visionOrder = caps.hasImages ? "vision_priority ASC," : "";
+
   const orderClause = caps.needsJsonSchema
-    ? "CASE WHEN m.tier = 'large' THEN 0 ELSE 1 END ASC, CASE WHEN avg_score > 0 THEN 0 ELSE 1 END ASC, avg_score DESC, m.context_length DESC, avg_latency ASC"
-    : "CASE WHEN avg_score > 0 THEN 0 ELSE 1 END ASC, avg_score DESC, m.context_length DESC, avg_latency ASC";
+    ? `${visionOrder} CASE WHEN m.tier = 'large' THEN 0 ELSE 1 END ASC, CASE WHEN ${scoreExpr} > 0 THEN 0 ELSE 1 END ASC, ${scoreExpr} DESC, m.context_length DESC, ${latencyExpr} ASC`
+    : `${visionOrder} CASE WHEN ${scoreExpr} > 0 THEN 0 ELSE 1 END ASC, ${scoreExpr} DESC, m.context_length DESC, ${latencyExpr} ASC`;
 
   const rows = db
     .prepare(
@@ -130,16 +164,13 @@ function getAvailableModels(caps: RequestCapabilities): ModelRow[] {
         m.supports_vision,
         m.tier,
         m.context_length,
-        COALESCE(b.avg_score, 0) as avg_score,
-        COALESCE(b.avg_latency, 9999999) as avg_latency,
+        ${scoreExpr} as avg_score,
+        ${latencyExpr} as avg_latency,
         h.status as health_status,
         h.cooldown_until
+        ${visionBoost}
       FROM models m
-      LEFT JOIN (
-        SELECT model_id, AVG(score) as avg_score, AVG(latency_ms) as avg_latency
-        FROM benchmark_results
-        GROUP BY model_id
-      ) b ON m.id = b.model_id
+      ${benchmarkJoin}
       LEFT JOIN (
         SELECT hl.model_id, hl.status, hl.cooldown_until
         FROM health_logs hl
@@ -211,6 +242,8 @@ function logCooldown(modelId: string, errorMsg: string, httpStatus = 0, override
       cooldownMs = 15 * 60 * 1000;    // 15 นาที — request ใหญ่เกินไป (ลองใหม่ได้เร็ว)
     } else if (httpStatus === 429) {
       cooldownMs = 30 * 60 * 1000;    // 30 นาที — rate limit
+    } else if (httpStatus === 410) {
+      cooldownMs = 7 * 24 * 60 * 60 * 1000; // 7 วัน — model ถูกถอด (Gone)
     } else if (httpStatus === 400) {
       cooldownMs = 10 * 60 * 1000;    // 10 นาที — bad request (อาจเป็น rate limit แฝง)
     } else if (httpStatus >= 500) {
@@ -247,7 +280,7 @@ function parseModelField(model: string): {
   if (model === "bcproxy/consensus") return { mode: "consensus" };
 
   // openrouter/xxx, kilo/xxx, groq/xxx
-  const providerMatch = model.match(/^(openrouter|kilo|google|groq|cerebras|sambanova|mistral|ollama|github|fireworks|cohere|cloudflare)\/(.+)$/);
+  const providerMatch = model.match(/^(openrouter|kilo|google|groq|cerebras|sambanova|mistral|ollama|github|fireworks|cohere|cloudflare|huggingface)\/(.+)$/);
   if (providerMatch) {
     return { mode: "direct", provider: providerMatch[1], modelId: providerMatch[2] };
   }
@@ -263,13 +296,18 @@ function getAllModelsIncludingCooldown(caps: RequestCapabilities): ModelRow[] {
   if (caps.hasImages) filters.push("m.supports_vision = 1");
   const whereClause = filters.join(" AND ");
 
+  // For vision: prioritize known-good providers, then random
+  const orderClause = caps.hasImages
+    ? "CASE WHEN m.provider IN ('google','groq','ollama') THEN 0 ELSE 1 END ASC, RANDOM()"
+    : "RANDOM()";
+
   const result = db.prepare(`
     SELECT m.id, m.provider, m.model_id, m.supports_tools, m.supports_vision, m.tier, m.context_length,
       COALESCE(b.avg_score, 0) as avg_score, COALESCE(b.avg_latency, 9999999) as avg_latency
     FROM models m
     LEFT JOIN (SELECT model_id, AVG(score) as avg_score, AVG(latency_ms) as avg_latency FROM benchmark_results GROUP BY model_id) b ON m.id = b.model_id
     WHERE ${whereClause}
-    ORDER BY RANDOM()
+    ORDER BY ${orderClause}
     LIMIT 20
   `).all() as ModelRow[];
 
@@ -278,7 +316,8 @@ function getAllModelsIncludingCooldown(caps: RequestCapabilities): ModelRow[] {
 
 function selectModelsByMode(
   mode: string,
-  caps: RequestCapabilities
+  caps: RequestCapabilities,
+  benchmarkCategory?: string
 ): ModelRow[] {
   const db = getDb();
   const now = new Date().toISOString();
@@ -323,11 +362,11 @@ function selectModelsByMode(
   }
 
   if (mode === "tools") {
-    return getAvailableModels({ ...caps, hasTools: true });
+    return getAvailableModels({ ...caps, hasTools: true }, benchmarkCategory);
   }
 
   // auto / thai → no context filter, let provider handle 413
-  return getAvailableModels(caps);
+  return getAvailableModels(caps, benchmarkCategory);
 }
 
 async function forwardToProvider(
@@ -354,6 +393,27 @@ async function forwardToProvider(
   }
 
   const requestBody: Record<string, unknown> = { ...body, model: actualModelId };
+
+  // Ollama: convert image URLs to base64 (Ollama doesn't support image URLs)
+  if (provider === "ollama" && Array.isArray(requestBody.messages)) {
+    const msgs = requestBody.messages as Array<{ role: string; content: unknown }>;
+    for (const msg of msgs) {
+      if (Array.isArray(msg.content)) {
+        for (const part of msg.content as Array<{ type: string; image_url?: { url?: string } }>) {
+          if (part.type === "image_url" && part.image_url?.url && !part.image_url.url.startsWith("data:")) {
+            try {
+              const imgRes = await fetch(part.image_url.url, { signal: AbortSignal.timeout(10000) });
+              if (imgRes.ok) {
+                const buf = Buffer.from(await imgRes.arrayBuffer());
+                const mime = imgRes.headers.get("content-type") || "image/jpeg";
+                part.image_url.url = `data:${mime};base64,${buf.toString("base64")}`;
+              }
+            } catch { /* keep original URL, let provider handle error */ }
+          }
+        }
+      }
+    }
+  }
 
   // Compress messages if they are large (> 30K estimated tokens)
   if (Array.isArray(requestBody.messages)) {
@@ -387,7 +447,7 @@ async function forwardToProvider(
 }
 
 function isRetryableStatus(status: number): boolean {
-  return status === 413 || status === 429 || status >= 500;
+  return status === 413 || status === 429 || status === 410 || status >= 500;
 }
 
 export async function POST(req: NextRequest) {
@@ -546,12 +606,22 @@ export async function POST(req: NextRequest) {
     }
 
     // ---- Smart routing: auto / fast / tools / thai ----
-    const candidates = selectModelsByMode(parsed.mode, caps);
+    // Map prompt category to benchmark category for scoring
+    const benchmarkCategory = caps.hasImages ? "vision" : promptCategory;
+    const candidates = selectModelsByMode(parsed.mode, caps, benchmarkCategory);
 
     // Smart routing: boost models that perform well for this prompt category
+    // Layer 1: Benchmark category scores (from exams)
+    const benchmarkBest = getBestModelsByBenchmarkCategory(benchmarkCategory);
+    if (benchmarkBest.length > 0) {
+      const bestSet = new Set(benchmarkBest);
+      const boosted = candidates.filter(c => bestSet.has(c.id));
+      const rest = candidates.filter(c => !bestSet.has(c.id));
+      candidates.splice(0, candidates.length, ...boosted, ...rest);
+    }
+    // Layer 2: Learned routing stats (from real usage)
     const learnedBest = getBestModelsForCategory(promptCategory);
     if (learnedBest.length > 0) {
-      // Move learned-best models to front (preserve order of rest)
       const bestSet = new Set(learnedBest);
       const boosted = candidates.filter(c => bestSet.has(c.id));
       const rest = candidates.filter(c => !bestSet.has(c.id));
@@ -561,7 +631,7 @@ export async function POST(req: NextRequest) {
     // ถ้าไม่มี candidate → ลองไม่ filter context → ลองรวม cooldown (สุ่มเลือก ดีกว่า 503)
     let finalCandidates = candidates;
     if (finalCandidates.length === 0) {
-      finalCandidates = selectModelsByMode(parsed.mode, caps);
+      finalCandidates = selectModelsByMode(parsed.mode, caps, benchmarkCategory);
     }
     if (finalCandidates.length === 0) {
       // Last resort: สุ่มจาก ALL models (รวม cooldown) — ดีกว่าไม่ตอบ
@@ -658,9 +728,11 @@ export async function POST(req: NextRequest) {
         lastError = `${provider}/${actualModelId}: HTTP ${response.status}`;
         recordRoutingResult(dbModelId, provider, promptCategory, false, Date.now() - startTime);
         const st = response.status;
-        if (provider !== "ollama" && (st === 429 || st === 413 || st === 422 || st >= 500 || st === 401 || st === 403)) {
+        if (provider !== "ollama" && (st === 429 || st === 413 || st === 422 || st === 410 || st >= 500 || st === 401 || st === 403)) {
           logCooldown(dbModelId, `HTTP ${st}: ${errText}`, st);
-          if (st >= 500) {
+          if (st === 410) {
+            emitEvent("provider_error", `${provider}/${actualModelId} ถูกถอดแล้ว (HTTP 410 Gone)`, errText.slice(0, 200), provider, actualModelId, "error");
+          } else if (st >= 500) {
             emitEvent("provider_error", `${provider} ล่ม (HTTP ${st})`, errText.slice(0, 200), provider, actualModelId, "error");
           }
         }

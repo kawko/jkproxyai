@@ -14,15 +14,97 @@ const FALLBACK_JUDGE_MODELS = [
   "google/gemma-3-27b-it:free",
 ];
 
-const QUESTIONS = [
-  "สวัสดีครับ วันนี้อากาศเป็นยังไงบ้าง?",
-  "แนะนำอาหารไทยมา 3 เมนู",
-  "กรุงเทพมหานครอยู่ประเทศอะไร?",
+// ─── Benchmark Questions — 10 questions, 8 categories ─────────────────────────
+
+interface BenchmarkQuestion {
+  category: string;
+  question: string;
+  type: "text" | "vision";
+  /** For vision questions — a public image URL */
+  imageUrl?: string;
+  /** Judge criteria specific to this question */
+  judgeCriteria: string;
+}
+
+const QUESTIONS: BenchmarkQuestion[] = [
+  // Thai (2 questions)
+  {
+    category: "thai",
+    question: "สรุปให้สั้นใน 1 ประโยค: กรุงเทพมหานครเป็นเมืองหลวงของประเทศไทย มีประชากรมากกว่า 10 ล้านคน เป็นศูนย์กลางเศรษฐกิจและการท่องเที่ยวที่สำคัญของเอเชียตะวันออกเฉียงใต้",
+    type: "text",
+    judgeCriteria: "ตอบภาษาไทยถูกไหม? สรุปเป็นประโยคเดียวได้ไหม? ครบใจความไหม?",
+  },
+  {
+    category: "thai",
+    question: "แก้ประโยคนี้ให้ถูกต้องสละสลวย: 'ฉันไปซื้อข้าวที่ร้านค้าที่อยู่ที่หน้าบ้านที่ฉันอยู่'",
+    type: "text",
+    judgeCriteria: "แก้ซ้ำคำได้ดีไหม? ประโยคสละสลวยขึ้นไหม? ยังคงความหมายเดิมไหม?",
+  },
+  // Code (1 question)
+  {
+    category: "code",
+    question: "เขียน Python function ชื่อ is_prime(n) ที่ตรวจสอบว่า n เป็นจำนวนเฉพาะหรือไม่ return True/False",
+    type: "text",
+    judgeCriteria: "โค้ดรันได้จริงไหม? logic ถูกต้องไหม? จัดการ edge case (0, 1, negative) ไหม?",
+  },
+  // Math (1 question)
+  {
+    category: "math",
+    question: "ถ้า x + 3 = 7 แล้ว x² + 2x = เท่าไร? แสดงวิธีทำ",
+    type: "text",
+    judgeCriteria: "คำตอบถูกต้องไหม? (x=4, x²+2x=24) แสดงวิธีทำชัดเจนไหม?",
+  },
+  // Instruction Following (1 question)
+  {
+    category: "instruction",
+    question: 'ตอบเป็น JSON เท่านั้น ห้ามมีข้อความอื่น: {"animal": ชื่อสัตว์ปีกที่บินได้, "legs": จำนวนขา, "can_fly": true}',
+    type: "text",
+    judgeCriteria: "ตอบเป็น JSON valid ไหม? มีครบทุก field ไหม? ไม่มีข้อความอื่นนอกจาก JSON ไหม? ข้อมูลถูกต้องไหม?",
+  },
+  // Creative (1 question)
+  {
+    category: "creative",
+    question: "แต่งกลอนสุภาพ 1 บท (4 วรรค) เรื่องฝนตก",
+    type: "text",
+    judgeCriteria: "มีครบ 4 วรรคไหม? สัมผัสถูกต้องตามฉันทลักษณ์ไหม? เนื้อหาเกี่ยวกับฝนไหม? ภาษาสวยไหม?",
+  },
+  // Knowledge (1 question)
+  {
+    category: "knowledge",
+    question: "อธิบาย photosynthesis แบบเด็ก 10 ขวบเข้าใจ ใน 3 ประโยค",
+    type: "text",
+    judgeCriteria: "อธิบายถูกต้องทางวิทยาศาสตร์ไหม? ใช้ภาษาง่ายที่เด็กเข้าใจไหม? สั้นกระชับ 3 ประโยคไหม?",
+  },
+  // Vision (2 questions) — test if model can actually see images
+  {
+    category: "vision",
+    question: "อธิบายภาพนี้ให้ละเอียด: มีอะไรอยู่ในภาพ? สี อะไรบ้าง?",
+    type: "vision",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Camponotus_flavomarginatus_ant.jpg/320px-Camponotus_flavomarginatus_ant.jpg",
+    judgeCriteria: "เห็นภาพจริงไหม? อธิบายได้ตรงกับภาพ (มด/แมลง) ไหม? ถ้าบอกว่าเห็นรูปไม่ได้ = 0 คะแนน",
+  },
+  {
+    category: "vision",
+    question: "ในภาพนี้มีตัวเลขอะไรบ้าง? และมีสีอะไร?",
+    type: "vision",
+    imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/SNice.svg/220px-SNice.svg.png",
+    judgeCriteria: "เห็นภาพจริงไหม? อธิบายได้ตรง (หน้ายิ้ม/smiley) ไหม? ถ้าบอกว่าเห็นรูปไม่ได้ = 0 คะแนน",
+  },
+  // Audio awareness (1 question — tests if model knows about audio capabilities)
+  {
+    category: "audio",
+    question: "ระบบนี้รองรับ Speech-to-Text (STT) และ Text-to-Speech (TTS) ผ่าน API endpoint ไหนบ้าง? ตอบตามมาตรฐาน OpenAI",
+    type: "text",
+    judgeCriteria: "รู้จัก OpenAI audio API ไหม? (/v1/audio/transcriptions, /v1/audio/speech) บอกถูกไหม?",
+  },
 ];
 
+// How many total questions per model
+const TOTAL_QUESTIONS = QUESTIONS.length;
+
 const MAX_MODELS_PER_RUN = 10;
-const FAIL_SCORE_THRESHOLD = 3; // < 3/10 = สอบตก, ไม่สอบซ้ำ
-const RETEST_DAYS = 7; // สอบซ้ำได้หลัง 7 วัน
+const FAIL_SCORE_THRESHOLD = 3; // < 3/10 = fail
+const RETEST_DAYS = 7;
 
 function logWorker(step: string, message: string, level = "info") {
   try {
@@ -39,6 +121,7 @@ interface DbModel {
   id: string;
   provider: string;
   model_id: string;
+  supports_vision: number;
   benchmark_count: number;
 }
 
@@ -60,23 +143,37 @@ function buildHeaders(provider: string): Record<string, string> {
   return headers;
 }
 
+// ─── Ask Model (text or vision) ───────────────────────────────────────────────
+
 export async function askModel(
   provider: string,
   modelId: string,
-  question: string
+  question: string,
+  options?: { imageUrl?: string }
 ): Promise<{ answer: string; latency: number; error?: string }> {
   const url = PROVIDER_URLS[provider];
   if (!url) return { answer: "", latency: 0, error: "unknown provider" };
 
   const start = Date.now();
   try {
+    // Build messages — text or vision (with image_url)
+    let content: unknown;
+    if (options?.imageUrl) {
+      content = [
+        { type: "text", text: question },
+        { type: "image_url", image_url: { url: options.imageUrl } },
+      ];
+    } else {
+      content = question;
+    }
+
     const res = await fetch(url, {
       method: "POST",
       headers: buildHeaders(provider),
       body: JSON.stringify({
         model: modelId,
-        messages: [{ role: "user", content: question }],
-        max_tokens: 150,
+        messages: [{ role: "user", content }],
+        max_tokens: 300,
       }),
       signal: AbortSignal.timeout(30000),
     });
@@ -98,13 +195,21 @@ export async function askModel(
   }
 }
 
+// ─── Judge Answer ─────────────────────────────────────────────────────────────
+
 export async function judgeAnswer(
-  question: string,
+  q: BenchmarkQuestion,
   answer: string
 ): Promise<{ score: number; reasoning: string }> {
   if (!answer) return { score: 0, reasoning: "No answer provided" };
 
-  const prompt = `ให้คะแนน 0-10 คำตอบนี้ตอบภาษาไทยถูกไหม?\nQ: ${question}\nA: ${answer.slice(0, 300)}\nตอบ JSON: {"score":N,"reasoning":"สั้นๆ"}`;
+  const prompt = `ให้คะแนน 0-10 คำตอบนี้:
+หมวด: ${q.category}
+คำถาม: ${q.question}
+เกณฑ์: ${q.judgeCriteria}
+คำตอบ: ${answer.slice(0, 500)}
+
+ตอบ JSON เท่านั้น: {"score":N,"reasoning":"อธิบายสั้นๆ"}`;
 
   // Try DeepSeek first (cheap + reliable)
   if (DEEPSEEK_API_KEY) {
@@ -181,14 +286,16 @@ export async function judgeAnswer(
   };
 }
 
+// ─── Run Benchmarks ───────────────────────────────────────────────────────────
+
 export async function runBenchmarks(): Promise<{
   tested: number;
   questions: number;
 }> {
-  logWorker("benchmark", "เริ่มรัน benchmark");
+  logWorker("benchmark", "เริ่มรัน benchmark (8 หมวด, 10 ข้อ)");
   const db = getDb();
 
-  // Get available models with fewer than 3 benchmark results
+  // Get available models with fewer than TOTAL_QUESTIONS benchmark results
   const models = db
     .prepare(
       `
@@ -196,6 +303,7 @@ export async function runBenchmarks(): Promise<{
       m.id,
       m.provider,
       m.model_id,
+      m.supports_vision,
       COUNT(b.id) AS benchmark_count
     FROM models m
     INNER JOIN health_logs hl ON hl.model_id = m.id
@@ -205,11 +313,11 @@ export async function runBenchmarks(): Promise<{
         SELECT MAX(h2.checked_at) FROM health_logs h2 WHERE h2.model_id = m.id
       )
     GROUP BY m.id
-    HAVING benchmark_count < 3
+    HAVING benchmark_count < ?
     LIMIT ?
   `
     )
-    .all(MAX_MODELS_PER_RUN) as DbModel[];
+    .all(TOTAL_QUESTIONS, MAX_MODELS_PER_RUN) as DbModel[];
 
   logWorker("benchmark", `พบ ${models.length} โมเดลที่ต้อง benchmark`);
 
@@ -226,20 +334,21 @@ export async function runBenchmarks(): Promise<{
      FROM benchmark_results WHERE model_id = ?`
   );
   const insertResult = db.prepare(`
-    INSERT INTO benchmark_results (model_id, question, answer, score, max_score, reasoning, latency_ms)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO benchmark_results (model_id, category, question, answer, score, max_score, reasoning, latency_ms)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   let totalQuestions = 0;
   let testedModels = 0;
 
-  // Parallel benchmark — 5 models at a time
+  // Parallel benchmark
   const CONCURRENCY = 20;
   let idx = 0;
   async function benchmarkWorker() {
     while (idx < models.length) {
       const model = models[idx++];
-    // ตรวจสอบว่าสอบแล้วและสอบตกซ้ำ — skip ถ้าคะแนนต่ำและยังไม่ถึง 7 วัน
+
+    // Skip if failed recently
     const summary = summaryStmt.get(model.id) as BenchmarkSummary;
     if (summary && summary.avg_score !== null && summary.latest_tested_at) {
       const avgScore = summary.avg_score;
@@ -249,90 +358,125 @@ export async function runBenchmarks(): Promise<{
       if (avgScore < FAIL_SCORE_THRESHOLD && daysSince < RETEST_DAYS) {
         logWorker(
           "benchmark",
-          `⏭️ ข้าม ${model.model_id} — สอบตก (${avgScore.toFixed(1)}/10) และยังไม่ถึง ${RETEST_DAYS} วัน`
+          `⏭️ ข้าม ${model.model_id} — สอบตก (${avgScore.toFixed(1)}/10) รอ ${RETEST_DAYS} วัน`
         );
         continue;
       }
     }
 
-    // ตรวจ 3 คำถามที่สอบแล้ว
+    // Find unanswered questions
     const answered = new Set(
       (answeredStmt.all(model.id) as { question: string }[]).map((r) => r.question)
     );
-    const pending = QUESTIONS.filter((q) => !answered.has(q));
+
+    // Filter questions: skip vision questions for non-vision models
+    const pending = QUESTIONS.filter((q) => {
+      if (answered.has(q.question)) return false;
+      if (q.type === "vision" && model.supports_vision !== 1) return false;
+      return true;
+    });
 
     if (pending.length === 0) {
-      logWorker("benchmark", `⏭️ ข้าม ${model.model_id} — สอบครบแล้ว`);
       continue;
     }
 
     testedModels++;
-    let modelTotalScore = 0;
-    let modelQuestionCount = 0;
+    const categoryScores: Record<string, { total: number; count: number }> = {};
 
-    for (const question of pending) {
+    for (const q of pending) {
       const { answer, latency, error } = await askModel(
         model.provider,
         model.model_id,
-        question
+        q.question,
+        q.type === "vision" ? { imageUrl: q.imageUrl } : undefined
       );
 
       if (error) {
         logWorker(
           "benchmark",
-          `โมเดล ${model.model_id} ผิดพลาด: ${error}`,
+          `${model.model_id} [${q.category}] ผิดพลาด: ${error}`,
           "warn"
         );
       }
 
-      const { score, reasoning } = await judgeAnswer(question, answer);
+      const { score, reasoning } = await judgeAnswer(q, answer);
+
+      // Vision-specific: if model says it can't see the image, force score = 0
+      if (q.type === "vision" && answer) {
+        const cantSee = /(?:ไม่สามารถ|ไม่ได้|cannot|can't|unable).*(?:ดู|เห็น|see|view|image|รูป|ภาพ)/i.test(answer);
+        if (cantSee) {
+          // Override score — model claimed vision but can't actually see
+          try {
+            insertResult.run(
+              model.id, q.category, q.question, answer.slice(0, 2000),
+              0, 10, "Model ไม่สามารถเห็นภาพได้จริง", latency
+            );
+            totalQuestions++;
+            // Update supports_vision = 0 for this model (proven can't see)
+            db.prepare("UPDATE models SET supports_vision = 0 WHERE id = ?").run(model.id);
+            logWorker("benchmark", `👁️ ${model.model_id} ไม่เห็นรูปจริง → supports_vision = 0`, "warn");
+          } catch (err) {
+            logWorker("benchmark", `DB insert error: ${err}`, "error");
+          }
+          if (!categoryScores[q.category]) categoryScores[q.category] = { total: 0, count: 0 };
+          categoryScores[q.category].total += 0;
+          categoryScores[q.category].count++;
+          continue;
+        }
+      }
 
       try {
         insertResult.run(
-          model.id,
-          question,
-          answer.slice(0, 2000),
-          score,
-          10,
-          reasoning,
-          latency
+          model.id, q.category, q.question, answer.slice(0, 2000),
+          score, 10, reasoning, latency
         );
         totalQuestions++;
-        modelTotalScore += score;
-        modelQuestionCount++;
+        if (!categoryScores[q.category]) categoryScores[q.category] = { total: 0, count: 0 };
+        categoryScores[q.category].total += score;
+        categoryScores[q.category].count++;
       } catch (err) {
-        logWorker(
-          "benchmark",
-          `DB insert error สำหรับ ${model.id}: ${err}`,
-          "error"
-        );
+        logWorker("benchmark", `DB insert error สำหรับ ${model.id}: ${err}`, "error");
       }
     }
 
-    // สรุปผลรายโมเดล + ตั้งชื่อใหม่ตามคะแนน
-    if (modelQuestionCount > 0) {
-      const avgScore = modelTotalScore / modelQuestionCount;
+    // Summary per model
+    const allScores = Object.values(categoryScores);
+    if (allScores.length > 0) {
+      const totalScore = allScores.reduce((s, c) => s + c.total, 0);
+      const totalCount = allScores.reduce((s, c) => s + c.count, 0);
+      const avgScore = totalScore / totalCount;
       const pct = Math.round((avgScore / 10) * 100);
       const passed = avgScore >= 5;
 
+      // Category breakdown for log
+      const catSummary = Object.entries(categoryScores)
+        .map(([cat, s]) => `${cat}:${(s.total / s.count).toFixed(1)}`)
+        .join(" ");
+
       logWorker(
         "benchmark",
-        `${passed ? "✅ สอบผ่าน" : "❌ สอบตก"}: ${model.model_id} — คะแนน ${avgScore.toFixed(1)}/10 (${pct}%)`,
+        `${passed ? "✅ สอบผ่าน" : "❌ สอบตก"}: ${model.model_id} — ${avgScore.toFixed(1)}/10 (${pct}%) [${catSummary}]`,
         passed ? "success" : "warn"
       );
 
-      // ตั้งชื่อเล่นใหม่ตามคะแนน + ความประพฤติ
+      // Generate nickname based on score + categories
       if (DEEPSEEK_API_KEY) {
         try {
           const { generateNickname } = await import("./scanner");
           const existingNicknames = (db.prepare("SELECT nickname FROM models WHERE nickname IS NOT NULL AND id != ?").all(model.id) as { nickname: string }[]).map(r => r.nickname);
 
+          // Find best and worst categories
+          const catEntries = Object.entries(categoryScores).map(([cat, s]) => ({ cat, avg: s.total / s.count }));
+          catEntries.sort((a, b) => b.avg - a.avg);
+          const bestCat = catEntries[0]?.cat ?? "";
+          const worstCat = catEntries[catEntries.length - 1]?.cat ?? "";
+
           let behavior = "";
-          if (pct >= 90) behavior = ` คะแนนสูงมาก ${pct}% เด่นมาก ขยัน เก่ง`;
-          else if (pct >= 70) behavior = ` คะแนนดี ${pct}% ตั้งใจเรียน`;
-          else if (pct >= 50) behavior = ` คะแนนพอผ่าน ${pct}% ขี้เกียจนิดหน่อย`;
-          else if (pct >= 30) behavior = ` คะแนนต่ำ ${pct}% ชอบหลับในห้อง`;
-          else behavior = ` สอบตก ${pct}% ไม่ตั้งใจเรียนเลย`;
+          if (pct >= 90) behavior = ` คะแนนสูงมาก ${pct}% เด่นมาก เก่งทุกวิชา โดยเฉพาะ ${bestCat}`;
+          else if (pct >= 70) behavior = ` คะแนนดี ${pct}% ถนัด ${bestCat} แต่ต้องปรับปรุง ${worstCat}`;
+          else if (pct >= 50) behavior = ` คะแนนพอผ่าน ${pct}% เก่ง ${bestCat} แต่อ่อน ${worstCat}`;
+          else if (pct >= 30) behavior = ` คะแนนต่ำ ${pct}% อ่อนหลายวิชา โดยเฉพาะ ${worstCat}`;
+          else behavior = ` สอบตก ${pct}% ต้องเรียนซ้ำทุกวิชา`;
 
           const nickname = await generateNickname(model.model_id, model.provider, existingNicknames, behavior);
           if (nickname) {
@@ -346,7 +490,7 @@ export async function runBenchmarks(): Promise<{
   const workers = Array.from({ length: Math.min(CONCURRENCY, models.length) }, () => benchmarkWorker());
   await Promise.all(workers);
 
-  const msg = `Benchmark เสร็จ: ทดสอบ ${testedModels} โมเดล, ${totalQuestions} คำถาม`;
+  const msg = `Benchmark เสร็จ: ทดสอบ ${testedModels} โมเดล, ${totalQuestions} คำถาม (8 หมวด)`;
   logWorker("benchmark", msg);
 
   return { tested: testedModels, questions: totalQuestions };

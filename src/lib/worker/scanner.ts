@@ -17,9 +17,9 @@ interface ModelRow {
 // ─── Vision & Tools detection from model name / metadata ─────────────────────
 
 const VISION_PATTERNS = [
-  /vision/i, /llava/i, /gemini/i, /gemma.*it/i, /pixtral/i,
+  /vision/i, /llava/i, /gemini/i, /gemma[34]/i, /gemma.*it/i, /pixtral/i,
   /gpt-4o/i, /gpt-4-turbo/i, /claude/i, /qwen.*vl/i, /qwen2\.5-vl/i,
-  /internvl/i, /minicpm.*v/i, /cogvlm/i, /phi-3.*vision/i,
+  /qwen3/i, /internvl/i, /minicpm.*v/i, /cogvlm/i, /phi-3.*vision/i,
   /deepseek-vl/i, /llama-3\.2.*vision/i, /llama-4/i,
   /molmo/i, /moondream/i, /bakllava/i,
 ];
@@ -474,6 +474,45 @@ async function fetchCloudflareModels(): Promise<ModelRow[]> {
   }
 }
 
+async function fetchHuggingFaceModels(): Promise<ModelRow[]> {
+  const token = getNextApiKey("huggingface");
+  if (!token) return [];
+  try {
+    // HF Inference API — get featured/recommended text-generation models
+    const res = await fetch("https://huggingface.co/api/models?pipeline_tag=text-generation&sort=trending&limit=30&filter=endpoints_compatible", {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    const models: ModelRow[] = [];
+    for (const m of json ?? []) {
+      const mid: string = m.id ?? m.modelId ?? "";
+      if (!mid) continue;
+      if (NON_CHAT_KEYWORDS.some((kw) => mid.toLowerCase().includes(kw))) continue;
+      // Only include models that likely support chat
+      const tags: string[] = m.tags ?? [];
+      if (!tags.includes("conversational") && !tags.includes("text-generation")) continue;
+      const ctx = m.config?.max_position_embeddings ?? 32000;
+      models.push({
+        id: `huggingface:${mid}`,
+        name: mid.split("/").pop() ?? mid,
+        provider: "huggingface",
+        model_id: mid,
+        context_length: ctx,
+        tier: calcTier(ctx),
+        description: m.description?.slice(0, 200) ?? undefined,
+        supports_vision: detectVision(mid, m.id ?? "", { vision: tags.includes("image-text-to-text") }),
+        supports_tools: detectTools(mid, m.id ?? ""),
+      });
+    }
+    return models;
+  } catch (err) {
+    logWorker("scan", `HuggingFace fetch error: ${err}`, "error");
+    return [];
+  }
+}
+
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY ?? "";
 
 export async function generateNickname(modelName: string, provider: string, existingNames: string[], scoreInfo = ""): Promise<string | null> {
@@ -514,7 +553,7 @@ export async function scanModels(): Promise<{ found: number; new: number; disapp
   logWorker("scan", "Starting model scan");
   const db = getDb();
 
-  const [orModels, kiloModels, googleModels, groqModels, cerebrasModels, sambaNovaModels, mistralModels, ollamaModels, githubModels, fireworksModels, cohereModels, cloudflareModels] = await Promise.all([
+  const [orModels, kiloModels, googleModels, groqModels, cerebrasModels, sambaNovaModels, mistralModels, ollamaModels, githubModels, fireworksModels, cohereModels, cloudflareModels, hfModels] = await Promise.all([
     fetchOpenRouterModels(),
     fetchKiloModels(),
     fetchGoogleModels(),
@@ -527,9 +566,10 @@ export async function scanModels(): Promise<{ found: number; new: number; disapp
     fetchFireworksModels(),
     fetchCohereModels(),
     fetchCloudflareModels(),
+    fetchHuggingFaceModels(),
   ]);
 
-  const allModels = [...orModels, ...kiloModels, ...googleModels, ...groqModels, ...cerebrasModels, ...sambaNovaModels, ...mistralModels, ...ollamaModels, ...githubModels, ...fireworksModels, ...cohereModels, ...cloudflareModels];
+  const allModels = [...orModels, ...kiloModels, ...googleModels, ...groqModels, ...cerebrasModels, ...sambaNovaModels, ...mistralModels, ...ollamaModels, ...githubModels, ...fireworksModels, ...cohereModels, ...cloudflareModels, ...hfModels];
   const foundIds = new Set(allModels.map(m => m.id));
   let newCount = 0;
 
@@ -616,7 +656,7 @@ export async function scanModels(): Promise<{ found: number; new: number; disapp
     }
   } catch { /* silent */ }
 
-  const msg = `Scan: พบ ${allModels.length} (OR=${orModels.length}, Kilo=${kiloModels.length}, Google=${googleModels.length}, Groq=${groqModels.length}, Cerebras=${cerebrasModels.length}, SN=${sambaNovaModels.length}, Mistral=${mistralModels.length}, Ollama=${ollamaModels.length}, GitHub=${githubModels.length}, FW=${fireworksModels.length}, Cohere=${cohereModels.length}, CF=${cloudflareModels.length}) | ใหม่ ${newCount} | หายไป ${disappearedCount}`;
+  const msg = `Scan: พบ ${allModels.length} (OR=${orModels.length}, Kilo=${kiloModels.length}, Google=${googleModels.length}, Groq=${groqModels.length}, Cerebras=${cerebrasModels.length}, SN=${sambaNovaModels.length}, Mistral=${mistralModels.length}, Ollama=${ollamaModels.length}, GitHub=${githubModels.length}, FW=${fireworksModels.length}, Cohere=${cohereModels.length}, CF=${cloudflareModels.length}, HF=${hfModels.length}) | ใหม่ ${newCount} | หายไป ${disappearedCount}`;
   logWorker("scan", msg);
 
   return { found: allModels.length, new: newCount, disappeared: disappearedCount };

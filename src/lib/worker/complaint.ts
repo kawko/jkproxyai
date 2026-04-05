@@ -95,15 +95,20 @@ export async function processComplaint(
 
     // Update benchmark score (penalty)
     db.prepare(`
-      INSERT INTO benchmark_results (model_id, question, answer, score, max_score, reasoning, latency_ms)
-      VALUES (?, ?, ?, 0, 10, ?, ?)
+      INSERT INTO benchmark_results (model_id, category, question, answer, score, max_score, reasoning, latency_ms)
+      VALUES (?, 'general', ?, ?, 0, 10, ?, ?)
     `).run(dbModelId, `[complaint] ${question}`, "", `Complaint re-exam: failed to respond`, latency);
 
     return;
   }
 
   // Judge the answer
-  const { score, reasoning } = await judgeAnswer(question, answer);
+  const { score, reasoning } = await judgeAnswer({
+    category: "general",
+    question,
+    type: "text",
+    judgeCriteria: "คำตอบถูกต้องและมีคุณภาพหรือไม่?",
+  }, answer);
   const passed = score >= PASS_THRESHOLD;
 
   logWorker(

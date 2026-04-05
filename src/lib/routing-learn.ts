@@ -5,11 +5,14 @@ import { getDb } from "@/lib/db/schema";
  * Detects what kind of prompt the user sent
  */
 const CATEGORY_PATTERNS: [string, RegExp[]][] = [
-  ["code", [/```/, /function\s/, /class\s/, /import\s/, /const\s/, /def\s/, /console\.log/, /return\s/]],
+  ["code", [/```/, /function\s/, /class\s/, /import\s/, /const\s/, /def\s/, /console\.log/, /return\s/, /เขียนโค้ด/i, /write.*code/i]],
   ["thai", [/[\u0E00-\u0E7F]{3,}/]],
-  ["math", [/\d+\s*[\+\-\*\/\=]\s*\d+/, /equation/, /calculate/, /formula/i]],
-  ["creative", [/write\s+a\s+(story|poem|song)/i, /creative/i, /imagine/i, /fiction/i]],
-  ["analysis", [/analyze/i, /compare/i, /evaluate/i, /pros\s+and\s+cons/i, /summarize/i, /summary/i]],
+  ["math", [/\d+\s*[\+\-\*\/\=]\s*\d+/, /equation/, /calculate/, /formula/i, /คำนวณ/, /สมการ/]],
+  ["creative", [/write\s+a\s+(story|poem|song)/i, /creative/i, /imagine/i, /fiction/i, /แต่ง/, /กลอน/, /นิทาน/]],
+  ["instruction", [/json/i, /format/i, /ตอบเป็น/, /ตามรูปแบบ/]],
+  ["knowledge", [/อธิบาย/, /explain/i, /what\s+is/i, /คืออะไร/]],
+  ["vision", [/ดูรูป/, /ภาพนี้/, /รูปนี้/, /image/i, /picture/i, /photo/i]],
+  ["analysis", [/analyze/i, /compare/i, /evaluate/i, /pros\s+and\s+cons/i, /summarize/i, /summary/i, /วิเคราะห์/, /เปรียบเทียบ/]],
   ["translate", [/translate/i, /แปล/]],
 ];
 
@@ -62,6 +65,28 @@ export function getBestModelsForCategory(promptCategory: string): string[] {
       ORDER BY success_rate DESC, avg_lat ASC
       LIMIT 10
     `).all(promptCategory) as { model_id: string }[];
+    return rows.map(r => r.model_id);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Get models ranked by benchmark score for a specific category
+ * Used to prioritize models that are strong in the requested area
+ */
+export function getBestModelsByBenchmarkCategory(category: string): string[] {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT model_id, AVG(score) as avg_score, COUNT(*) as q_count
+      FROM benchmark_results
+      WHERE category = ?
+      GROUP BY model_id
+      HAVING q_count >= 1 AND avg_score >= 5
+      ORDER BY avg_score DESC
+      LIMIT 20
+    `).all(category) as { model_id: string; avg_score: number }[];
     return rows.map(r => r.model_id);
   } catch {
     return [];
