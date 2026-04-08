@@ -18,6 +18,7 @@ const ENV_MAP: Record<string, string> = {
   cohere: "COHERE_API_KEY",
   cloudflare: "CLOUDFLARE_API_TOKEN",
   huggingface: "HF_TOKEN",
+  zhipu: "ZHIPU_API_KEY",
 };
 
 // Cache DB keys for 30s to avoid hitting DB on every request

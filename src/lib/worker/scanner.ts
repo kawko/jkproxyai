@@ -569,6 +569,53 @@ async function fetchHuggingFaceModels(): Promise<ModelRow[]> {
   }
 }
 
+async function fetchZhipuModels(): Promise<ModelRow[]> {
+  const apiKey = getNextApiKey("zhipu");
+  if (!apiKey) return [];
+
+  // ZhipuAI GLM Coding Plan (Lite tier) — hardcoded เพราะ /v1/models ไม่ return context_length
+  const ZHIPU_MODELS: Array<{ id: string; name: string; ctx: number; vision: boolean; tools: boolean; reasoning: boolean }> = [
+    { id: "glm-4-plus",   name: "GLM-4 Plus",   ctx: 128000, vision: false, tools: true,  reasoning: false },
+    { id: "glm-4-long",   name: "GLM-4 Long",   ctx: 1000000, vision: false, tools: true, reasoning: false },
+    { id: "glm-4-air",    name: "GLM-4 Air",    ctx: 128000, vision: false, tools: true,  reasoning: false },
+    { id: "glm-4-airx",   name: "GLM-4 AirX",   ctx: 8192,  vision: false, tools: true,  reasoning: false },
+    { id: "glm-4-flash",  name: "GLM-4 Flash",  ctx: 128000, vision: false, tools: true,  reasoning: false },
+    { id: "glm-4-flashx", name: "GLM-4 FlashX", ctx: 128000, vision: false, tools: true,  reasoning: false },
+    { id: "glm-4v-plus",  name: "GLM-4V Plus",  ctx: 8192,  vision: true,  tools: true,  reasoning: false },
+    { id: "glm-4v",       name: "GLM-4V",       ctx: 2048,  vision: true,  tools: true,  reasoning: false },
+    { id: "glm-z1-flash", name: "GLM-Z1 Flash", ctx: 32768, vision: false, tools: false, reasoning: true },
+    { id: "glm-z1-air",   name: "GLM-Z1 Air",   ctx: 32768, vision: false, tools: false, reasoning: true },
+  ];
+
+  // Verify the key is valid with a quick test
+  try {
+    const res = await fetch("https://open.bigmodel.cn/api/paas/v4/models", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) {
+      logWorker("scan", `ZhipuAI key invalid: HTTP ${res.status}`, "error");
+      return [];
+    }
+  } catch (err) {
+    logWorker("scan", `ZhipuAI check error: ${err}`, "error");
+    return [];
+  }
+
+  return ZHIPU_MODELS.map(m => ({
+    id: `zhipu:${m.id}`,
+    name: m.name,
+    provider: "zhipu",
+    model_id: m.id,
+    context_length: m.ctx,
+    tier: calcTier(m.ctx),
+    description: "ZhipuAI GLM — OpenAI-compatible",
+    supports_vision: m.vision ? 1 : 0,
+    supports_tools: m.tools ? 1 : 0,
+    supports_reasoning: m.reasoning ? 1 : 0,
+  }));
+}
+
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY ?? "";
 
 export async function generateNickname(modelName: string, provider: string, existingNames: string[], scoreInfo = ""): Promise<string | null> {
@@ -609,7 +656,7 @@ export async function scanModels(): Promise<{ found: number; new: number; disapp
   logWorker("scan", "Starting model scan");
   const db = getDb();
 
-  const [orModels, kiloModels, googleModels, groqModels, cerebrasModels, sambaNovaModels, mistralModels, ollamaModels, githubModels, fireworksModels, cohereModels, cloudflareModels, hfModels] = await Promise.all([
+  const [orModels, kiloModels, googleModels, groqModels, cerebrasModels, sambaNovaModels, mistralModels, ollamaModels, githubModels, fireworksModels, cohereModels, cloudflareModels, hfModels, zhipuModels] = await Promise.all([
     fetchOpenRouterModels(),
     fetchKiloModels(),
     fetchGoogleModels(),
@@ -623,9 +670,10 @@ export async function scanModels(): Promise<{ found: number; new: number; disapp
     fetchCohereModels(),
     fetchCloudflareModels(),
     fetchHuggingFaceModels(),
+    fetchZhipuModels(),
   ]);
 
-  const allModels = [...orModels, ...kiloModels, ...googleModels, ...groqModels, ...cerebrasModels, ...sambaNovaModels, ...mistralModels, ...ollamaModels, ...githubModels, ...fireworksModels, ...cohereModels, ...cloudflareModels, ...hfModels];
+  const allModels = [...orModels, ...kiloModels, ...googleModels, ...groqModels, ...cerebrasModels, ...sambaNovaModels, ...mistralModels, ...ollamaModels, ...githubModels, ...fireworksModels, ...cohereModels, ...cloudflareModels, ...hfModels, ...zhipuModels];
   const foundIds = new Set(allModels.map(m => m.id));
   let newCount = 0;
 
@@ -729,7 +777,7 @@ export async function scanModels(): Promise<{ found: number; new: number; disapp
     }
   } catch { /* silent */ }
 
-  const msg = `Scan: พบ ${allModels.length} (OR=${orModels.length}, Kilo=${kiloModels.length}, Google=${googleModels.length}, Groq=${groqModels.length}, Cerebras=${cerebrasModels.length}, SN=${sambaNovaModels.length}, Mistral=${mistralModels.length}, Ollama=${ollamaModels.length}, GitHub=${githubModels.length}, FW=${fireworksModels.length}, Cohere=${cohereModels.length}, CF=${cloudflareModels.length}, HF=${hfModels.length}) | ใหม่ ${newCount} | หายไป ${disappearedCount}`;
+  const msg = `Scan: พบ ${allModels.length} (OR=${orModels.length}, Kilo=${kiloModels.length}, Google=${googleModels.length}, Groq=${groqModels.length}, Cerebras=${cerebrasModels.length}, SN=${sambaNovaModels.length}, Mistral=${mistralModels.length}, Ollama=${ollamaModels.length}, GitHub=${githubModels.length}, FW=${fireworksModels.length}, Cohere=${cohereModels.length}, CF=${cloudflareModels.length}, HF=${hfModels.length}, ZhipuAI=${zhipuModels.length}) | ใหม่ ${newCount} | หายไป ${disappearedCount}`;
   logWorker("scan", msg);
 
   return { found: allModels.length, new: newCount, disappeared: disappearedCount };
