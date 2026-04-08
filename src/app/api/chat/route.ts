@@ -17,6 +17,53 @@ export async function POST(req: NextRequest) {
       return new Response(JSON.stringify({ error: "Missing fields" }), { status: 400 });
     }
 
+    // "auto" provider → forward to smart routing gateway
+    if (provider === "auto") {
+      const port = process.env.PORT || 3000;
+      const gatewayUrl = `http://localhost:${port}/v1/chat/completions`;
+      const res = await fetch(gatewayUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "auto", messages, stream: true, max_tokens: 2048 }),
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        return new Response(JSON.stringify({ error: `Gateway ${res.status}: ${errText.slice(0, 200)}` }), { status: 502 });
+      }
+      const reader = res.body?.getReader();
+      if (!reader) return new Response(JSON.stringify({ error: "No stream" }), { status: 502 });
+      const stream = new ReadableStream({
+        async start(controller) {
+          const decoder = new TextDecoder();
+          let buffer = "";
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split("\n");
+              buffer = lines.pop() ?? "";
+              for (const line of lines) {
+                if (!line.startsWith("data: ")) continue;
+                const data = line.slice(6).trim();
+                if (data === "[DONE]") continue;
+                try {
+                  const json = JSON.parse(data);
+                  const content = json.choices?.[0]?.delta?.content;
+                  if (content) controller.enqueue(new TextEncoder().encode(content));
+                } catch { /* skip */ }
+              }
+            }
+          } catch (err) {
+            console.error("[chat/auto] stream error:", err);
+          } finally {
+            controller.close();
+          }
+        },
+      });
+      return new Response(stream, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
+    }
+
     const url = PROVIDER_URLS[provider];
     const apiKey = getNextApiKey(provider);
     if (!url) {

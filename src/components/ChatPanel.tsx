@@ -10,8 +10,23 @@ interface ChatMsg {
   content: string;
 }
 
+const AUTO_MODEL: ModelData = {
+  id: "auto",
+  name: "Auto (Smart Routing)",
+  nickname: null,
+  provider: "auto",
+  modelId: "auto",
+  contextLength: 0,
+  tier: "large",
+  supportsVision: false,
+  supportsTools: false,
+  health: { status: "available", latencyMs: 0, lastCheck: null, cooldownUntil: null },
+  firstSeen: "",
+  lastSeen: "",
+};
+
 export function ChatPanel({ availableModels }: { availableModels: ModelData[] }) {
-  const [selectedModel, setSelectedModel] = useState<ModelData | null>(null);
+  const [selectedModel, setSelectedModel] = useState<ModelData>(AUTO_MODEL);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -20,11 +35,8 @@ export function ChatPanel({ availableModels }: { availableModels: ModelData[] })
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    if (availableModels.length > 0 && !selectedModel) {
-      setSelectedModel(availableModels[0]);
-    }
-  }, [availableModels, selectedModel]);
+  // Keep auto as default — only switch away if user explicitly picks another model
+  useEffect(() => {}, [availableModels]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -32,7 +44,7 @@ export function ChatPanel({ availableModels }: { availableModels: ModelData[] })
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || !selectedModel || isLoading) return;
+    if (!input.trim() || isLoading) return;
 
     const userMsg: ChatMsg = { id: Date.now().toString(), role: "user", content: input.trim() };
     const assistantId = (Date.now() + 1).toString();
@@ -100,16 +112,15 @@ export function ChatPanel({ availableModels }: { availableModels: ModelData[] })
       <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5 bg-gray-900/50">
         <div className="flex-1">
           <select
-            value={selectedModel?.id ?? ""}
+            value={selectedModel.id}
             onChange={(e) => {
+              if (e.target.value === "auto") { setSelectedModel(AUTO_MODEL); return; }
               const m = availableModels.find((x) => x.id === e.target.value);
-              setSelectedModel(m ?? null);
+              if (m) setSelectedModel(m);
             }}
             className="w-full bg-gray-800/80 text-gray-100 text-sm rounded-lg px-3 py-2 border border-gray-700/60 focus:outline-none focus:border-indigo-500"
           >
-            {availableModels.length === 0 && (
-              <option value="">— ยังไม่มีโมเดลพร้อมใช้ —</option>
-            )}
+            <option value="auto">⚡ Auto — Smart Routing</option>
             {availableModels.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.name} ({m.provider})
@@ -117,12 +128,15 @@ export function ChatPanel({ availableModels }: { availableModels: ModelData[] })
             ))}
           </select>
         </div>
-        {selectedModel && (
+        {selectedModel.id !== "auto" && (
           <div className="flex items-center gap-2 text-xs text-gray-400 shrink-0">
             <span className={provColor.text}>{selectedModel.provider}</span>
             <span>·</span>
             <span>{fmtCtx(selectedModel.contextLength)} ctx</span>
           </div>
+        )}
+        {selectedModel.id === "auto" && (
+          <div className="text-xs text-indigo-400 shrink-0">smart routing</div>
         )}
       </div>
 
@@ -170,13 +184,12 @@ export function ChatPanel({ availableModels }: { availableModels: ModelData[] })
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            disabled={!selectedModel}
-            placeholder={isLoading ? "กำลังตอบ..." : selectedModel ? "ถามอะไรก็ได้..." : "เลือกโมเดลก่อน"}
+            placeholder={isLoading ? "กำลังตอบ..." : "ถามอะไรก็ได้..."}
             className="flex-1 bg-gray-800/80 text-gray-100 text-sm rounded-xl px-4 py-3 border border-gray-700/60 focus:outline-none focus:border-indigo-500 placeholder-gray-600 disabled:opacity-50"
           />
           <button
             type="submit"
-            disabled={isLoading || !input.trim() || !selectedModel}
+            disabled={isLoading || !input.trim()}
             className="px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-white"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
