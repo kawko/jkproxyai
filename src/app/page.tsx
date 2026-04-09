@@ -211,6 +211,10 @@ export default function Dashboard() {
   const [, setTick] = useState(0);
   const [showGuide, setShowGuide] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [adminPwd, setAdminPwd] = useState("");
+  const [adminError, setAdminError] = useState("");
 
   interface GatewayLog {
     id: number;
@@ -260,9 +264,14 @@ export default function Dashboard() {
   }
   const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>([]);
 
-  // Scroll to top on mount
+  // Scroll to top on mount + restore admin session + check /admin redirect signal
   useEffect(() => {
     window.scrollTo(0, 0);
+    setIsAdmin(localStorage.getItem("bcproxy_admin") === "1");
+    if (sessionStorage.getItem("bcproxy_open_admin_login") === "1") {
+      sessionStorage.removeItem("bcproxy_open_admin_login");
+      setShowAdminLogin(true);
+    }
   }, []);
 
   // Tick every second for cooldown countdowns
@@ -310,6 +319,30 @@ export default function Dashboard() {
     const t2 = setInterval(fetchGatewayLogs, 2_000);
     return () => { clearInterval(t1); clearInterval(t2); };
   }, [fetchAll, fetchGatewayLogs]);
+
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const res = await fetch("/api/admin-login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: adminPwd }),
+    });
+    const data = (await res.json()) as { ok: boolean };
+    if (data.ok) {
+      localStorage.setItem("bcproxy_admin", "1");
+      setIsAdmin(true);
+      setShowAdminLogin(false);
+      setAdminPwd("");
+      setAdminError("");
+    } else {
+      setAdminError("รหัสผ่านไม่ถูกต้อง");
+    }
+  };
+
+  const handleAdminLogout = () => {
+    localStorage.removeItem("bcproxy_admin");
+    setIsAdmin(false);
+  };
 
   const triggerWorker = async () => {
     setTriggering(true);
@@ -368,7 +401,11 @@ export default function Dashboard() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           {/* Row 1: Logo + actions */}
           <div className="flex h-12 items-center justify-between">
-            <div className="flex items-center gap-3">
+            <div
+              className="flex items-center gap-3 cursor-default select-none"
+              onDoubleClick={() => setShowAdminLogin(true)}
+              title="Double-click to admin login"
+            >
               <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center shadow-lg animate-glow-pulse">
                 <span className="text-xs font-black text-white">BC</span>
               </div>
@@ -376,44 +413,60 @@ export default function Dashboard() {
               <span className="hidden sm:inline text-xs text-gray-500 border border-gray-800 rounded px-2 py-0.5">
                 AI Gateway
               </span>
+              {isAdmin && (
+                <span className="text-xs text-amber-400 border border-amber-500/30 bg-amber-500/10 rounded px-2 py-0.5">
+                  Admin
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowSetup(true)}
-                className="px-3 py-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors text-xs"
-                title="ตั้งค่า API Key"
-              >
-                <svg className="h-4 w-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                Setup
-              </button>
-              <button
-                onClick={() => setShowGuide(true)}
-                className="px-3 py-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors text-xs"
-                title="คู่มือการใช้งาน"
-              >
-                <svg className="h-4 w-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                </svg>
-                คู่มือ
-              </button>
-              <a
-                href="https://github.com/jaturapornchai/bcproxyai"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
-                title="GitHub"
-              >
-                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
-                </svg>
-              </a>
+              {isAdmin && (
+                <>
+                  <button
+                    onClick={() => setShowSetup(true)}
+                    className="px-3 py-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors text-xs"
+                    title="ตั้งค่า API Key"
+                  >
+                    <svg className="h-4 w-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Setup
+                  </button>
+                  <button
+                    onClick={() => setShowGuide(true)}
+                    className="px-3 py-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors text-xs"
+                    title="คู่มือการใช้งาน"
+                  >
+                    <svg className="h-4 w-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                    </svg>
+                    คู่มือ
+                  </button>
+                  <a
+                    href="https://github.com/jaturapornchai/bcproxyai"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+                    title="GitHub"
+                  >
+                    <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+                    </svg>
+                  </a>
+                  <button
+                    onClick={handleAdminLogout}
+                    className="px-3 py-1.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 transition-colors text-xs border border-amber-500/20"
+                    title="ออกจากระบบ Admin"
+                  >
+                    🔓 ออก
+                  </button>
+                </>
+              )}
             </div>
           </div>
-          {/* Row 2: Nav links — wrappable */}
-          <div className="flex flex-wrap gap-1 pb-2">
+          {/* Row 2: Nav links — admin only */}
+          {isAdmin && <div className="flex flex-wrap gap-1 pb-2">
             {[
               { id: "status",        icon: "\u{1F3EB}", label: "ครูใหญ่" },
               { id: "providers",     icon: "\u{1F50C}", label: "ผู้ให้บริการ" },
@@ -440,10 +493,18 @@ export default function Dashboard() {
                 <span>{link.label}</span>
               </a>
             ))}
-          </div>
+          </div>}
         </div>
       </nav>
 
+      {!isAdmin ? (
+        /* ── User mode: Chat only ──────────────────────────────────────── */
+        <div className="mx-auto max-w-3xl px-4 sm:px-6 py-12">
+          <section id="chat" className="animate-fade-in-up">
+            <ChatPanel availableModels={availableModels} />
+          </section>
+        </div>
+      ) : (
       <div className="mx-auto max-w-7xl px-4 sm:px-6 py-8 space-y-16">
 
         {/* ── Live Mascot Theater (data-driven from gateway logs) ───────── */}
@@ -1116,12 +1177,55 @@ export default function Dashboard() {
         </footer>
 
       </div>
+      )} {/* end isAdmin */}
 
       {/* ── Guide Modal ──────────────────────────────────────────────────── */}
       {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
 
       {/* ── Setup Modal ──────────────────────────────────────────────────── */}
       <SetupModal open={showSetup} onClose={() => setShowSetup(false)} />
+
+      {/* ── Admin Login Modal ────────────────────────────────────────────── */}
+      {showAdminLogin && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          onClick={() => { setShowAdminLogin(false); setAdminPwd(""); setAdminError(""); }}
+        >
+          <div
+            className="bg-gray-900 border border-indigo-500/30 rounded-2xl shadow-2xl max-w-sm w-full mx-4 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-xl font-bold text-white mb-1">🔐 Admin Login</h2>
+            <p className="text-xs text-gray-500 mb-4">เข้าสู่ระบบเพื่อดูแลระบบ BCProxyAI</p>
+            <form onSubmit={handleAdminLogin} className="space-y-3">
+              <input
+                type="password"
+                placeholder="รหัสผ่าน Admin"
+                value={adminPwd}
+                onChange={(e) => setAdminPwd(e.target.value)}
+                autoFocus
+                className="w-full bg-gray-800 text-white border border-gray-700 rounded-lg px-4 py-2.5 focus:outline-none focus:border-indigo-500 text-sm"
+              />
+              {adminError && <p className="text-red-400 text-sm">{adminError}</p>}
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="submit"
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg py-2.5 font-semibold text-sm transition-colors"
+                >
+                  เข้าสู่ระบบ
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowAdminLogin(false); setAdminPwd(""); setAdminError(""); }}
+                  className="px-4 py-2.5 rounded-lg border border-gray-700 text-gray-400 hover:text-white text-sm transition-colors"
+                >
+                  ยกเลิก
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ── Log Detail Modal ─────────────────────────────────────────────── */}
       {logDetail && (
