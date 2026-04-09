@@ -18,6 +18,8 @@ interface ChatMsg {
   id: string;
   role: "user" | "assistant";
   content: string;
+  modelUsed?: string;    // actual model name e.g. "gemini-2.5-flash"
+  providerUsed?: string; // actual provider e.g. "google"
 }
 
 interface CanvasItem {
@@ -25,6 +27,34 @@ interface CanvasItem {
   content: string;
   language: string;
   title: string;
+}
+
+// ─── Model Avatar Helpers ──────────────────────────────────────────────────────
+
+const PROVIDER_AVATAR: Record<string, { bg: string; text: string; ring: string }> = {
+  google:     { bg: "bg-blue-500/20",    text: "text-blue-400",    ring: "ring-blue-500/30" },
+  groq:       { bg: "bg-orange-500/20",  text: "text-orange-400",  ring: "ring-orange-500/30" },
+  openrouter: { bg: "bg-purple-500/20",  text: "text-purple-400",  ring: "ring-purple-500/30" },
+  kilo:       { bg: "bg-purple-500/20",  text: "text-purple-400",  ring: "ring-purple-500/30" },
+  zhipu:      { bg: "bg-teal-500/20",    text: "text-teal-400",    ring: "ring-teal-500/30" },
+  cerebras:   { bg: "bg-cyan-500/20",    text: "text-cyan-400",    ring: "ring-cyan-500/30" },
+  sambanova:  { bg: "bg-rose-500/20",    text: "text-rose-400",    ring: "ring-rose-500/30" },
+  mistral:    { bg: "bg-amber-500/20",   text: "text-amber-400",   ring: "ring-amber-500/30" },
+  ollama:     { bg: "bg-green-500/20",   text: "text-green-400",   ring: "ring-green-500/30" },
+};
+
+const DEFAULT_AVATAR = { bg: "bg-indigo-500/20", text: "text-indigo-400", ring: "ring-indigo-500/30" };
+
+function modelAbbr(modelName: string): string {
+  // e.g. "gemini-2.5-flash" → "GEM", "gpt-4o-mini" → "GPT", "glm-4-flash" → "GLM"
+  const clean = modelName.replace(/^[^a-zA-Z]*/, ""); // strip leading non-alpha
+  return clean.slice(0, 3).toUpperCase() || "AI";
+}
+
+function avatarStyle(provider: string): { bg: string; text: string; ring: string } {
+  // Also infer from model name prefix for providers like "zhipu"
+  const p = provider.toLowerCase();
+  return PROVIDER_AVATAR[p] ?? DEFAULT_AVATAR;
 }
 
 const AUTO_MODEL: ModelData = {
@@ -660,6 +690,19 @@ export function ChatPanel({ availableModels }: { availableModels: ModelData[] })
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
+      // Capture which model actually responded (set by /api/chat from gateway headers)
+      const modelUsed = res.headers.get("X-Model-Used") ?? undefined;
+      const providerUsed = res.headers.get("X-Provider-Used") ?? undefined;
+
+      // Attach model info to the assistant message placeholder
+      if (modelUsed || providerUsed) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId ? { ...m, modelUsed, providerUsed } : m
+          )
+        );
+      }
+
       const reader = res.body?.getReader();
       if (!reader) throw new Error("No response body");
 
@@ -799,11 +842,20 @@ export function ChatPanel({ availableModels }: { availableModels: ModelData[] })
             </div>
           )}
 
-          {messages.map((msg) => (
+          {messages.map((msg) => {
+            const style = msg.providerUsed ? avatarStyle(msg.providerUsed) : DEFAULT_AVATAR;
+            const abbr = msg.modelUsed ? modelAbbr(msg.modelUsed) : "AI";
+            const tooltip = msg.modelUsed
+              ? `${msg.modelUsed}${msg.providerUsed ? ` (${msg.providerUsed})` : ""}`
+              : undefined;
+            return (
             <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               {msg.role === "assistant" && (
-                <div className="h-7 w-7 rounded-lg bg-indigo-500/20 flex items-center justify-center shrink-0 mr-2 mt-0.5">
-                  <span className="text-xs font-bold text-indigo-400">AI</span>
+                <div
+                  className={`h-7 w-7 rounded-lg ${style.bg} flex items-center justify-center shrink-0 mr-2 mt-0.5 ring-1 ${style.ring} cursor-default`}
+                  title={tooltip}
+                >
+                  <span className={`text-[10px] font-bold ${style.text} leading-none`}>{abbr}</span>
                 </div>
               )}
               <div
@@ -833,7 +885,8 @@ export function ChatPanel({ availableModels }: { availableModels: ModelData[] })
                 ) : null}
               </div>
             </div>
-          ))}
+            );
+          })}
 
           {errorMsg && (
             <div className="text-center text-red-400 text-xs py-2 px-4 glass rounded-lg">

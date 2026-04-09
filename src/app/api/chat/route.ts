@@ -32,6 +32,8 @@ export async function POST(req: NextRequest) {
       }
       const reader = res.body?.getReader();
       if (!reader) return new Response(JSON.stringify({ error: "No stream" }), { status: 502 });
+      const resolvedProvider = res.headers.get("X-BCProxy-Provider") ?? "";
+      const resolvedModel = res.headers.get("X-BCProxy-Model") ?? "";
       const stream = new ReadableStream({
         async start(controller) {
           const decoder = new TextDecoder();
@@ -61,7 +63,13 @@ export async function POST(req: NextRequest) {
           }
         },
       });
-      return new Response(stream, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "X-Model-Used": resolvedModel,
+          "X-Provider-Used": resolvedProvider,
+        },
+      });
     }
 
     const url = PROVIDER_URLS[provider];
@@ -140,7 +148,11 @@ export async function POST(req: NextRequest) {
     });
 
     return new Response(stream, {
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "X-Model-Used": modelId,
+        "X-Provider-Used": provider,
+      },
     });
   } catch (err) {
     console.error("[chat] error:", err);
