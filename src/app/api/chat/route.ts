@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getNextApiKey } from "@/lib/api-keys";
 import { PROVIDER_URLS } from "@/lib/providers";
+import { POST as gatewayPOST } from "@/app/v1/chat/completions/route";
 
 export const dynamic = "force-dynamic";
 
@@ -17,15 +18,14 @@ export async function POST(req: NextRequest) {
       return new Response(JSON.stringify({ error: "Missing fields" }), { status: 400 });
     }
 
-    // "auto" provider → forward to smart routing gateway
+    // "auto" provider → call gateway handler directly (no HTTP loopback)
     if (provider === "auto") {
-      const port = process.env.PORT || 3000;
-      const gatewayUrl = `http://localhost:${port}/v1/chat/completions`;
-      const res = await fetch(gatewayUrl, {
+      const gatewayReq = new NextRequest("http://internal/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: "auto", messages, stream: true, max_tokens: 2048 }),
       });
+      const res = await gatewayPOST(gatewayReq);
       if (!res.ok) {
         const errText = await res.text().catch(() => "");
         return new Response(JSON.stringify({ error: `Gateway ${res.status}: ${errText.slice(0, 200)}` }), { status: 502 });
