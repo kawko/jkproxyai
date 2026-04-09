@@ -436,6 +436,115 @@ section[id] { scroll-margin-top: 6rem; }
 }
 .animate-glitch { animation: glitch 4s infinite; }
 
+/* ── Markdown renderer styles ───────────────────────────────── */
+
+.md-content { color: #e2e8f0; }
+
+.md-p { margin: 0.6em 0; line-height: 1.7; }
+
+.md-h1, .md-h2, .md-h3, .md-h4, .md-h5, .md-h6 {
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 1em 0 0.4em;
+  color: #f1f5f9;
+}
+.md-h1 { font-size: 1.4em; }
+.md-h2 { font-size: 1.2em; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.25em; }
+.md-h3 { font-size: 1.05em; }
+.md-h4 { font-size: 0.95em; }
+.md-h5, .md-h6 { font-size: 0.9em; color: #94a3b8; }
+
+.md-ul, .md-ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+}
+.md-ul { list-style-type: disc; }
+.md-ol { list-style-type: decimal; }
+
+.md-blockquote {
+  border-left: 3px solid #6366f1;
+  padding: 0.4em 0.8em;
+  margin: 0.5em 0;
+  color: #94a3b8;
+  background: rgba(99,102,241,0.05);
+  border-radius: 0 6px 6px 0;
+}
+
+.md-hr {
+  border: none;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  margin: 1em 0;
+}
+
+.md-link {
+  color: #818cf8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.md-link:hover { color: #a5b4fc; }
+
+.md-inline-code {
+  background: rgba(99,102,241,0.15);
+  border: 1px solid rgba(99,102,241,0.25);
+  color: #a5b4fc;
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+  font-size: 0.875em;
+  font-family: 'Geist Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
+.md-pre {
+  margin: 0.75em 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: #0f172a;
+  position: relative;
+}
+.md-pre::before {
+  content: attr(data-lang);
+  position: absolute;
+  top: 0.4em;
+  right: 0.75em;
+  font-size: 0.65em;
+  color: #64748b;
+  font-family: monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.md-code {
+  display: block;
+  padding: 1em 1.2em;
+  font-size: 0.85em;
+  line-height: 1.65;
+  font-family: 'Geist Mono', 'Fira Code', 'Cascadia Code', monospace;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.md-table-wrap { overflow-x: auto; margin: 0.75em 0; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); }
+.md-table { width: 100%; border-collapse: collapse; font-size: 0.875em; }
+.md-th {
+  background: rgba(99,102,241,0.12);
+  color: #c7d2fe;
+  padding: 0.5em 0.75em;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  white-space: nowrap;
+}
+.md-td {
+  padding: 0.45em 0.75em;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  color: #e2e8f0;
+  vertical-align: top;
+}
+.md-table tbody tr:last-child .md-td { border-bottom: none; }
+.md-table tbody tr:hover .md-td { background: rgba(255,255,255,0.03); }
+
 /* ── Scanline overlay for sci-fi effect ─────────────────────── */
 .scanlines::before {
   content: '';
