@@ -206,7 +206,8 @@ function markdownToHtml(md: string): string {
 // ─── Canvas Detection ─────────────────────────────────────────────────────────
 
 function detectCanvas(content: string): CanvasItem | null {
-  // Find last code block (most likely the final/complete one)
+  // 1. Code blocks — only if substantial (≥5 non-blank lines OR ≥150 chars)
+  //    Tiny inline snippets stay in the chat bubble only.
   const codeRe = /```(\w*)\n([\s\S]*?)```/g;
   let last: RegExpExecArray | null = null;
   let m: RegExpExecArray | null;
@@ -214,15 +215,31 @@ function detectCanvas(content: string): CanvasItem | null {
   if (last) {
     const lang = last[1].toLowerCase() || "text";
     const code = last[2];
+    // HTML always gets the canvas (iframe preview is genuinely richer)
     if (lang === "html" || code.trim().startsWith("<!DOCTYPE") || code.trim().startsWith("<html")) {
       return { type: "html", content: code, language: "html", title: "HTML Preview" };
     }
-    return { type: "code", content: code, language: lang, title: `${lang} code` };
+    const nonBlankLines = code.split("\n").filter((l) => l.trim().length > 0).length;
+    if (nonBlankLines >= 5 || code.length >= 150) {
+      return { type: "code", content: code, language: lang, title: `${lang} code` };
+    }
+    // Short snippet — canvas not needed, chat bubble is fine
+    return null;
   }
-  // Large markdown with structure
-  if ((/^#{1,3}\s/m.test(content) || /^\|.+\|$/m.test(content)) && content.length > 300) {
+
+  // 2. Proper markdown tables (header row + separator row) — canvas gives a cleaner view
+  if (/^\|.+\|[ \t]*$/m.test(content) && /^\|[ \t]*[-:]+[ \t]*\|/m.test(content)) {
+    return { type: "markdown", content, language: "markdown", title: "Table Preview" };
+  }
+
+  // 3. Long structured document: requires ≥2 headings AND >500 chars
+  //    Simple "# Intro" + a paragraph doesn't qualify
+  const headingCount = (content.match(/^#{1,3} /gm) ?? []).length;
+  if (headingCount >= 2 && content.length > 500) {
     return { type: "markdown", content, language: "markdown", title: "Document Preview" };
   }
+
+  // Plain text, simple bold/italic/lists → no canvas
   return null;
 }
 
