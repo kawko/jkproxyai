@@ -501,6 +501,27 @@ function ConvSidebar({
 
 // ─── Main ChatPanel ───────────────────────────────────────────────────────────
 
+function getOrCreateUserId(): string {
+  try {
+    let uid = localStorage.getItem("bcproxy_user_id");
+    if (!uid) {
+      uid = "u_" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+      localStorage.setItem("bcproxy_user_id", uid);
+    }
+    return uid;
+  } catch {
+    return "anonymous";
+  }
+}
+
+function getSidebarPref(): boolean {
+  try { return localStorage.getItem("bcproxy_sidebar_open") === "true"; } catch { return false; }
+}
+
+function setSidebarPref(open: boolean) {
+  try { localStorage.setItem("bcproxy_sidebar_open", open ? "true" : "false"); } catch { /* */ }
+}
+
 export function ChatPanel({ availableModels }: { availableModels: ModelData[] }) {
   const [selectedModel, setSelectedModel] = useState<ModelData>(AUTO_MODEL);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -510,11 +531,18 @@ export function ChatPanel({ availableModels }: { availableModels: ModelData[] })
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [canvasItem, setCanvasItem] = useState<CanvasItem | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const userIdRef = useRef<string>("anonymous");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Init userId + sidebar pref from localStorage (client-only)
+  useEffect(() => {
+    userIdRef.current = getOrCreateUserId();
+    setSidebarOpen(getSidebarPref());
+  }, []);
 
   // Auto-scroll
   useEffect(() => {
@@ -532,7 +560,8 @@ export function ChatPanel({ availableModels }: { availableModels: ModelData[] })
   // Load conversations
   const loadConversations = useCallback(async () => {
     try {
-      const data = await fetch("/api/conversations").then((r) => r.json()) as Conversation[];
+      const uid = userIdRef.current;
+      const data = await fetch(`/api/conversations?userId=${encodeURIComponent(uid)}`).then((r) => r.json()) as Conversation[];
       setConversations(Array.isArray(data) ? data : []);
     } catch { /* silent */ }
   }, []);
@@ -606,7 +635,7 @@ export function ChatPanel({ availableModels }: { availableModels: ModelData[] })
         const data = await fetch("/api/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title, modelId: selectedModel.modelId }),
+          body: JSON.stringify({ title, modelId: selectedModel.modelId, userId: userIdRef.current }),
         }).then((r) => r.json()) as { id: string };
         convId = data.id;
         setActiveConvId(convId);
@@ -711,7 +740,7 @@ export function ChatPanel({ availableModels }: { availableModels: ModelData[] })
         <div className="flex items-center gap-2 px-3 py-2 border-b border-white/10 bg-gray-900/60 shrink-0">
           {/* Sidebar toggle */}
           <button
-            onClick={() => setSidebarOpen((o) => !o)}
+            onClick={() => setSidebarOpen((o) => { setSidebarPref(!o); return !o; })}
             className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-colors"
             title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
           >

@@ -198,6 +198,7 @@ function initSchema(db: Database.Database) {
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL DEFAULT 'New Chat',
       model_id TEXT,
+      user_id TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
@@ -215,6 +216,13 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_chat_conv_updated ON chat_conversations(updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_chat_msg_conv ON chat_messages(conversation_id, created_at);
   `);
+
+  // Migration: add user_id column to chat_conversations
+  const convCols = db.prepare("PRAGMA table_info(chat_conversations)").all() as { name: string }[];
+  if (!convCols.some(c => c.name === "user_id")) {
+    db.exec(`ALTER TABLE chat_conversations ADD COLUMN user_id TEXT`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_chat_conv_user ON chat_conversations(user_id)`);
+  }
 
   // Migration: add category column to existing benchmark_results table
   const cols = db.prepare("PRAGMA table_info(benchmark_results)").all() as { name: string }[];
